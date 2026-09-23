@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-label="work-log — 多 agent 协作的心跳看板、看门狗与定向问答通道">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101623"/>
+      <stop offset="0.55" stop-color="#151d2e"/>
+      <stop offset="1" stop-color="#1b1730"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="0.5" stop-color="#7dd3fc"/>
+      <stop offset="1" stop-color="#c084fc"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e2638"/>
+      <stop offset="1" stop-color="#171e2d"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="420" fill="url(#bg)"/>
+  <rect width="1280" height="420" fill="url(#grid)"/>
+  <circle cx="1180" cy="30" r="220" fill="#7c3aed" fill-opacity="0.12"/>
+  <circle cx="60" cy="400" r="180" fill="#0ea5e9" fill-opacity="0.10"/>
+
+  <!-- 左侧：品牌 -->
+  <g font-family="'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans SC','Helvetica Neue',Arial,sans-serif">
+    <rect x="64" y="76" width="52" height="6" rx="3" fill="url(#accent)"/>
+    <text x="64" y="152" font-size="64" font-weight="700" fill="#f1f5f9" letter-spacing="-1">work-log</text>
+    <text x="66" y="200" font-size="21" fill="#94a3b8">
+      多 agent 协作的<tspan fill="#7dd3fc">心跳看板</tspan> · <tspan fill="#7dd3fc">看门狗</tspan> · <tspan fill="#c084fc">定向问答</tspan>
+    </text>
+    <text x="66" y="234" font-size="16" fill="#64748b">
+      让多个 agent 在同一块看板上互相看得见、问得着、卡得住。
+    </text>
+
+    <!-- 徽章 -->
+    <g font-size="13.5" font-weight="600">
+      <rect x="64" y="272" width="126" height="30" rx="15" fill="#0f766e" fill-opacity="0.22" stroke="#2dd4bf" stroke-opacity="0.45"/>
+      <text x="127" y="292" fill="#5eead4" text-anchor="middle">零第三方依赖</text>
+
+      <rect x="200" y="272" width="150" height="30" rx="15" fill="#1e3a5f" fill-opacity="0.55" stroke="#38bdf8" stroke-opacity="0.45"/>
+      <text x="275" y="292" fill="#7dd3fc" text-anchor="middle">纯标准库 · 3.9+</text>
+
+      <rect x="360" y="272" width="150" height="30" rx="15" fill="#3b2f63" fill-opacity="0.6" stroke="#a78bfa" stroke-opacity="0.45"/>
+      <text x="435" y="292" fill="#c4b5fd" text-anchor="middle">32 组 290 条断言</text>
+    </g>
+
+    <text x="66" y="348" font-size="14" fill="#475569">
+      看门狗抓「静默卡死」· 等待图抓「心跳全绿的死锁」· 熔断抓「互相客套停不下来」
+    </text>
+  </g>
+
+  <!-- 右侧：看板示意 -->
+  <g transform="translate(700,56)">
+    <rect x="0" y="0" width="520" height="308" rx="16" fill="url(#panel)" stroke="#334155" stroke-opacity="0.9"/>
+    <rect x="0" y="0" width="520" height="40" rx="16" fill="#0f172a" fill-opacity="0.7"/>
+    <rect x="0" y="24" width="520" height="16" fill="#0f172a" fill-opacity="0.7"/>
+    <circle cx="22" cy="20" r="5" fill="#fb7185"/>
+    <circle cx="40" cy="20" r="5" fill="#fbbf24"/>
+    <circle cx="58" cy="20" r="5" fill="#34d399"/>
+    <text x="80" y="25" font-size="13" fill="#64748b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">board.md</text>
+
+    <g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="13.5">
+      <text x="24" y="76" fill="#5eead4">&lt;agent1&gt;</text>
+      <text x="122" y="76" fill="#475569">19:07:12</text>
+      <text x="206" y="76" fill="#cbd5e1">改 tts.py 的音色参数…</text>
+
+      <text x="24" y="112" fill="#7dd3fc">&lt;agent2&gt;</text>
+      <text x="122" y="112" fill="#475569">19:07:20</text>
+      <text x="206" y="112" fill="#cbd5e1">[提问→agent1] #1 复用同一个 schema？</text>
+
+      <text x="24" y="148" fill="#5eead4">&lt;agent1&gt;</text>
+      <text x="122" y="148" fill="#475569">19:07:41</text>
+      <text x="206" y="148" fill="#cbd5e1">[回应#1] 用 text 字段，别加壳</text>
+
+      <text x="24" y="184" fill="#c4b5fd">&lt;agent3&gt;</text>
+      <text x="122" y="184" fill="#475569">19:08:02</text>
+      <text x="206" y="184" fill="#cbd5e1">跑构建（预计 20 分钟）</text>
+
+      <!-- 被标红的静默行 -->
+      <rect x="16" y="202" width="488" height="34" rx="8" fill="#7f1d1d" fill-opacity="0.30" stroke="#f87171" stroke-opacity="0.5"/>
+      <text x="24" y="224" fill="#fca5a5">&lt;agent4&gt;</text>
+      <text x="122" y="224" fill="#7f1d1d">--:--:--</text>
+      <text x="206" y="224" fill="#fecaca">静默 187s ⚠ 疑似卡死</text>
+
+      <!-- 协作险情行 -->
+      <rect x="16" y="244" width="488" height="50" rx="8" fill="#78350f" fill-opacity="0.28" stroke="#fbbf24" stroke-opacity="0.45"/>
+      <text x="24" y="264" fill="#fbbf24" font-weight="700">[互相等待]</text>
+      <text x="130" y="264" fill="#fde68a">agent2 ⇄ agent3</text>
+      <text x="24" y="284" fill="#d6b98c" font-size="12.5">心跳全绿，但双方都在等对方 —— 看门狗抓不到</text>
+    </g>
+  </g>
+</svg>
