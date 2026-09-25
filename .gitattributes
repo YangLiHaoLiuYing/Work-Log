@@ -1,0 +1,32 @@
+# 统一换行符为 LF —— 这个仓库里有 shell 脚本，CRLF 会让 bash 报奇怪的语法错误。
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+*.html text eol=lf
+*.svg  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# 二进制：不要做任何换行转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.mp4  binary
+*.mov  binary
+*.zip  binary
+*.gz   binary
+*.pdf  binary
+
+# 让 GitHub 语言统计正确：把工程文档当作文档，而不是代码
+docs/**/*.md linguist-documentation
+CHANGELOG.md linguist-documentation
+README.md    linguist-documentation
+README.en.md linguist-documentation
+CONTRIBUTING.md linguist-documentation
+LICENSE      linguist-documentation
+assets/viewer.html linguist-vendored=false

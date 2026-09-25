@@ -4,7 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%20%7C%203.13-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![Zero deps](https://img.shields.io/badge/dependencies-0-2ea44f)](#requirements)
-[![Assertions](https://img.shields.io/badge/assertions-290%20passing-2ea44f)](docs/VALIDATION.md)
+[![Assertions](https://img.shields.io/badge/assertions-394%20passing-2ea44f)](docs/VALIDATION.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![English](https://img.shields.io/badge/docs-English-1f6feb)](#quick-start) [![中文](https://img.shields.io/badge/docs-中文-6e7781)](README.md)
 
@@ -32,10 +32,11 @@ Standard library only, no third-party dependencies, no network, no changes to yo
 ## See it first (no install, no commands)
 
 Open **[`docs/preview.html`](docs/preview.html)** — a single file, no dependencies, works offline.
-It turns the **real output** of the four scenarios below into diagrams:
+Seven acts, all **real output** (the first four from `examples/demo-output.txt`, the fifth from `examples/doctor-output.txt`, the sixth from `examples/onboard-output.txt`; act seven's commands are exercised line by line in `scripts/selftest.sh` group `[36]`):
 
 > watchdog catches a silent stall · wait graph catches the "all-green deadlock" ·
-> circuit breaker stops the ping-pong · multi-way `await` resolves on the first reply
+> circuit breaker stops the ping-pong · multi-way `await` resolves on the first reply ·
+> **onboarding self-check `doctor`** · **wiring snippet `onboard`** · **pinning an agent's name + still working on another machine**
 
 (GitHub does not render HTML files — clone the repo and open it in a browser,
 or serve it via GitHub Pages yourself.)
@@ -135,19 +136,31 @@ see [docs/DESIGN.md](docs/DESIGN.md) (Chinese).
 
 ## Command reference
 
-20 subcommands, grouped by purpose:
+24 subcommands, grouped by purpose:
 
 | Group | Commands |
 |---|---|
 | Heartbeat | `init` `post` `hold` `release` `tail` |
 | Direct Q&A | `ask` `reply` `await` `brief` `ack-user` `read-user` |
 | Supervision | `check` `status` `watch` `ack` |
+| Identity | `identity` (**name registry**: who is called what on this board, and from which directory — claiming another directory's name is **refused**) `whoami` (**what am I called here, and which rule decided that**) |
+| Onboarding | `onboard` (**hand the wiring snippet to a second agent** — prints only by default; `--to user\|opencode-global\|repo\|…` writes it, idempotently, and refuses to clobber a hand-written protocol; `--detect` **probes which toolchains are installed**, `--to auto` writes every cross-directory target it finds, exiting `1` when it finds none) `doctor` (**is my own side actually wired up?** — six checks: instruction files in cwd · this board's path *and* the duty to report in memory · am I still posting · **is my name pinned** · are alerts burying the real signal) |
 | Resource locks | `lock` `unlock` `locks` |
 | For humans | `serve` (live browser view, with a collaboration badge) `say` (shout to everyone) |
 
 **Collaboration is the activation condition**: with ≥2 agents working, the board lights up
 (visible in `status`, on the `serve` page, and as a board event). **You can join the conversation**:
 an agent runs `ask --to 用户`, you answer with `reply --agent 用户 --id N`, and its `await` receives it.
+
+**`--agent` is optional**: it resolves from `$WORK_LOG_AGENT` (pins one *session*), then from
+`identities.json` on the board matching your cwd (pins one *directory*). If neither applies it exits
+**2** and prints the exact command to run — it never guesses, because a wrong guess lets two sessions
+silently share one identity (their heartbeats, cursors and `awaiting` all merge, and the board
+shows nothing wrong).
+
+**The wiring snippet contains no absolute path to the engine.** `init` drops an executable `worklog`
+launcher into the board directory that pins `--dir` and **finds the engine itself** — so the whole
+bundle still works on another machine, or with a different agent.
 
 Full parameters: `python3 scripts/work_log.py --help`. Protocol details:
 [`references/protocol.md`](references/protocol.md).
@@ -167,7 +180,7 @@ Not "written and shipped" — actually run:
 - **Multi-agent collaboration sensing**: the board lights up a "collaboration" marker the moment a
   second agent starts working (visible in `status`, the browser view, and as a board event) —
   this is the tool's activation condition.
-- **290 assertions across 32 test groups, 0 failures** — green on both Python 3.9.6 and 3.13.12
+- **394 assertions across 39 test groups, 0 failures** — green on both Python 3.9.6 and 3.13.12
 - **Real-model validation**: drove 2 agents through the full protocol for 3 rounds against a live
   OpenAI-compatible endpoint. Every exchange closed, decisions quoted the peer's actual wording,
   a user request conflicting with an already-agreed decision went through "block + negotiate + explicit
@@ -219,12 +232,17 @@ git clone https://github.com/YangLiHaoLiuYing/Work-Log.git work-log && python3 w
 work-log/
 ├── SKILL.md                 agent-facing manual (triggers / command table / pitfalls)
 ├── scripts/
-│   ├── work_log.py         engine: single file, zero deps, 20 subcommands
+│   ├── work_log.py         engine: single file, zero deps, 24 subcommands
 │   ├── llm_agent.py         drive a real model as an agent via any OpenAI-compatible endpoint
-│   └── selftest.sh          290-assertion regression suite
+│   └── selftest.sh          394-assertion regression suite
+│   └── check_stdlib_only.py blocks accidental third-party deps (runs in CI)
 ├── references/protocol.md   spec: state machine, exit codes, board grammar, trade-offs
 ├── assets/viewer.html       live view page (served by `serve`)
-├── examples/demo.sh         60-second demo (no key, leaves no files)
+├── examples/
+│   ├── demo.sh              60-second demo (no key, leaves no files)
+│   ├── demo-output.txt      real capture for acts 1–4
+│   ├── doctor-output.txt    real capture for act 5 (onboarding self-check)
+│   └── onboard-output.txt   real capture for act 6 (wiring snippet)
 └── docs/                    design, validation, publishing notes + visual preview (mostly Chinese)
 ```
 
@@ -245,8 +263,8 @@ punctuation's first byte into the variable name and abort with `rc?: unbound var
 | Doc | What's in it |
 |---|---|
 | [`docs/DESIGN.md`](docs/DESIGN.md) | Design decisions, deliberate non-goals, war stories (Chinese) |
-| [`docs/VALIDATION.md`](docs/VALIDATION.md) | Validation: 290 assertions + 3 real-model rounds + performance + how to reproduce (Chinese) |
-| [`docs/preview.html`](docs/preview.html) | **Visual preview**: the four scenarios as diagrams (single file, offline) |
+| [`docs/VALIDATION.md`](docs/VALIDATION.md) | Validation: 394 assertions + 3 real-model rounds + performance + how to reproduce (Chinese) |
+| [`docs/preview.html`](docs/preview.html) | **Visual preview**: six acts of real output as diagrams (single file, offline) |
 | [`docs/PUBLISH.md`](docs/PUBLISH.md) | Publishing manual: step by step to GitHub / Gitee (Chinese) |
 | [`docs/LAUNCH.md`](docs/LAUNCH.md) | Launch copy: repo blurb, topics, per-platform posts (Chinese) |
 | [`references/protocol.md`](references/protocol.md) | Protocol spec: state machine, board grammar, exit-code contract (Chinese) |

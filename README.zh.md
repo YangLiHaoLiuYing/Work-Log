@@ -4,7 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%20%7C%203.13-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![零依赖](https://img.shields.io/badge/dependencies-0-2ea44f)](#依赖)
-[![断言](https://img.shields.io/badge/assertions-290%20passing-2ea44f)](docs/VALIDATION.md)
+[![断言](https://img.shields.io/badge/assertions-394%20passing-2ea44f)](docs/VALIDATION.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![中文文档](https://img.shields.io/badge/docs-中文-1f6feb)](#30-秒上手) [![English](https://img.shields.io/badge/docs-English-6e7781)](README.en.md)
 
@@ -31,9 +31,9 @@
 ## 先看效果（不用装、不用跑）
 
 打开 **[`docs/preview.html`](docs/preview.html)** —— 单文件、零依赖、离线可看。
-一页里把下面四个场景的**真实输出**画成了图：
+一页七幕，全是**真实输出**（前四幕取自 `examples/demo-output.txt`，第五幕取自 `examples/doctor-output.txt`，第六幕取自 `examples/onboard-output.txt`，第七幕命令逐条跑过、见自测第 `[36]` 组）：
 
-> 看门狗抓静默卡死 · 等待图抓「心跳全绿的死锁」· 通信熔断叫停乒乓 · 多路等待任一达成
+> 看门狗抓静默卡死 · 等待图抓「心跳全绿的死锁」· 通信熔断叫停乒乓 · 多路等待任一达成 · **接入自查 `doctor`** · **接入片段 `onboard`** · **固定 agent 名字 + 换台电脑还能用**
 
 （GitHub 网页不渲染 HTML，clone 下来用浏览器打开即可；也可以自己开 GitHub Pages 把它发到线上。）
 
@@ -147,15 +147,24 @@ python3 "$WL" await --agent agent1 --id 1,2,3 --any --timeout 300
 
 ## 命令行速查
 
-20 个子命令，按用途分组：
+24 个子命令，按用途分组：
 
 | 分组 | 命令 |
 |---|---|
 | 心跳 | `init` `post` `hold` `release` `tail` |
 | 定向问答 | `ask` `reply` `await` `brief` `ack-user` `read-user` |
 | 监督 | `check` `status` `watch` `ack` |
+| 身份 | `identity`（**名字登记表**：谁在这块板上叫什么、从哪来；别的目录抢同一个名字会被**拒绝**） `whoami`（我叫什么、**凭什么**认出来的） |
+| 接入体检 | `onboard`（**把接入片段交给第二个 agent**：默认只打印，`--to user\|opencode-global\|repo\|…` 才落盘，幂等且拒绝覆盖手写协议；`--detect` **只探测本机装了哪些工具链**、`--to auto` 按探测结果逐个落跨目录档，探测不到退 `1`） `doctor`（**我这条线有没有被拉起来**：六项 —— cwd 指令文件 · 记忆里的板坐标 + 报到义务 · 我最近在不在报到 · **名字固定住了没有** · 告警有没有盖住发言） |
 | 资源锁 | `lock` `unlock` `locks` |
 | 人看的 | `serve`（浏览器实时视图，含协作徽章） `say`（用户随时插话） |
+
+**`--agent` 可以省**：先看 `$WORK_LOG_AGENT`（给会话钉死），再看板上 `identities.json`
+里 cwd 匹配的那条（给目录钉死）；两条都不成立就退 `2` 并打印该跑的命令 —— **不猜**，
+因为猜错会让两个会话静默共用一个身份（心跳、游标、`awaiting` 全混在一起，板上看不出来）。
+
+**接入片段里不含引擎的绝对路径**：`init` 会在看板目录里落一个可执行的 `worklog` 引导脚本，
+它钉死 `--dir` 并**自己找引擎**。所以整包搬到另一台电脑、或换个别的 agent，协议照样能用。
 
 **多人协作即启动条件**：≥2 个 agent 同时在干活，看板自动亮起「协作」标记
 （`status` / `serve` 页 / 看板事件三处可见）。**用户可直接参与对话**：agent
@@ -167,7 +176,7 @@ python3 "$WL" await --agent agent1 --id 1,2,3 --any --timeout 300
 
 不是"写完就发"，是跑过的：
 
-- **290 条断言 / 32 个测试组 / 0 失败**，在 **Python 3.9.6 与 3.13.12 上各自全绿**
+- **394 条断言 / 39 个测试组 / 0 失败**，在 **Python 3.9.6 与 3.13.12 上各自全绿**
 - **真机验证**：用真实模型（OpenAI 兼容端点）驱动 2 个 agent 走完整协议 3 轮 ——
   双向问答全部闭环、决定里能引用对方原话、面对相冲突的用户要求走「阻塞 + 协商 + 显式折中」、
   看门狗全程 0 条误报
@@ -245,13 +254,18 @@ python3 "$WL" init --agents a1,a2
 work-log/
 ├── SKILL.md                 ← 给 agent 读的说明书（触发条件 / 命令表 / 坑清单）
 ├── scripts/
-│   ├── work_log.py         引擎：零依赖单文件，20 个子命令
+│   ├── work_log.py         引擎：零依赖单文件，24 个子命令
 │   ├── llm_agent.py         用任意 OpenAI 兼容端点把真模型当 agent 驱动起来（验收就用它）
-│   ├── selftest.sh          290 条断言的回归套件（32 组 0 失败，3.9 与 3.13 双版本）
+│   ├── selftest.sh          394 条断言的回归套件（39 组 0 失败，3.9 与 3.13 双版本）
 │   └── check_stdlib_only.py 挡住"不小心引入第三方依赖"，CI 里跑
 ├── references/protocol.md   协议规格：状态机 / 退出码 / 看板文法 / 设计权衡
 ├── assets/viewer.html       实时视图页面（serve 提供）
-├── examples/demo.sh         60 秒演示（不需要 key，不留文件）
+├── examples/
+│   ├── demo.sh              60 秒演示（不需要 key，不留文件）
+│   ├── demo-output.txt      前四幕的真实捕获
+│   ├── doctor-output.txt    第五幕的真实捕获（接入自查）
+│   └── onboard-output.txt   第六幕的真实捕获（接入片段）
+│       （第七幕「固定名字 + 可移植」的命令由 scripts/selftest.sh 第 [36] 组逐条跑）
 └── docs/                    发布与设计文档（见下）
 ```
 
@@ -271,7 +285,7 @@ bash examples/demo.sh > /dev/null
 
 CI 已经配好（`.github/workflows/test.yml`）：Ubuntu + macOS × Python 3.9 + 3.13 四个组合，
 跑 shell 语法检查 + **一条静态护栏**（挡的就是上面那个 `$变量` 紧跟非 ASCII 的写法 ——
-`bash -n` 抓不到它）、依赖检查、290 条断言、以及 60 秒演示。
+`bash -n` 抓不到它）、依赖检查、394 条断言、以及 60 秒演示。
 
 测试套件覆盖并发写不丢行、告警冷却与升级、跨天分节、脏输入健壮性、HTTP 视图接口、
 退出码契约（18 种坏调用），以及**上面三类故障各自的检出与误报边界**。
@@ -284,8 +298,8 @@ CI 已经配好（`.github/workflows/test.yml`）：Ubuntu + macOS × Python 3.9
 | 文档 | 内容 |
 |---|---|
 | [`docs/DESIGN.md`](docs/DESIGN.md) | 设计决策：为什么这么写、刻意不做什么、踩坑记录 |
-| [`docs/VALIDATION.md`](docs/VALIDATION.md) | 验收：290 条断言 + 真机 3 轮 + 性能数字 + 复现方法 |
-| [`docs/preview.html`](docs/preview.html) | **效果预览页**：四个场景的可视化（单文件、离线可看） |
+| [`docs/VALIDATION.md`](docs/VALIDATION.md) | 验收：394 条断言 + 真机 3 轮 + 性能数字 + 复现方法 |
+| [`docs/preview.html`](docs/preview.html) | **效果预览页**：七幕真实输出的可视化（单文件、离线可看） |
 | [`docs/PUBLISH.md`](docs/PUBLISH.md) | 发布手册：一步步推到 GitHub / Gitee、配 topics、发 release |
 | [`docs/LAUNCH.md`](docs/LAUNCH.md) | 发布文案：仓库简介、topics、各平台帖子（可直接用） |
 | [`references/protocol.md`](references/protocol.md) | 协议规格：状态机、看板文法、退出码契约 |
