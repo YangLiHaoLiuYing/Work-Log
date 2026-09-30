@@ -87,6 +87,8 @@
   .st{font-size:11px;padding:1px 6px;border-radius:4px;border:1px solid var(--line);white-space:nowrap}
   .st.心跳中{color:var(--ok);border-color:#22543a}
   .st.疑似卡死{color:var(--bad);border-color:#5a2626}
+  /* 离线 = 人已经不在了：灰色，不再往红里灌（红色催人去救，救一个不存在的进程没意义） */
+  .st.离线{color:var(--fg3);border-color:var(--line)}
   .st.挂起中{color:var(--warn);border-color:#5a4a1a}
   .st.完成{color:var(--done);border-color:#33405a}
   .st.待启动{color:var(--idle);border-color:var(--line)}
@@ -95,6 +97,7 @@
   .bar i{display:block;height:100%;background:var(--ok)}
   .bar i.warn{background:var(--warn)}
   .bar i.bad{background:var(--bad)}
+  .bar i.off{background:var(--fg3)}
   .waitchip{font-size:11px;padding:1px 6px;border-radius:4px;border:1px solid #5a4a1a;
             background:rgba(90,74,26,.25);color:#fde68a;font-variant-numeric:tabular-nums}
   .hot{font-size:11px;padding:1px 6px;border-radius:4px;border:1px solid #6b3a1a;
@@ -155,6 +158,8 @@
   <span class="stat warn" id="s-ask" style="display:none"></span>
   <span class="collab" id="collab">协作：--</span>
   <span class="meta" id="meta"></span>
+  <button class="stat bad" id="unacked" style="display:none"
+          title="点一下就确认全部未确认告警（人在页面上不必去敲 CLI）"></button>
 </header>
 <main>
   <section>
@@ -177,6 +182,7 @@
   </section>
   <aside>
     <h2>agent 状态 <span class="n" id="n-agents"></span></h2>
+    <div class="hint" style="padding:2px 0 6px">「挂起中」= <b>在线待命</b>，喊话一到就会被唤醒 —— 不是下线；「完成」才是收工。</div>
     <table id="agents"></table>
     <h2 style="margin-top:18px">资源占用 <span class="n" id="n-locks"></span></h2>
     <div id="locks"><div class="empty" style="padding:6px 0">无占用</div></div>
@@ -255,9 +261,14 @@ function rowHtml(e){
   const col = e.kind === 'user' ? cssVar('--warn') : colorOf(e.agent);
   const tc = tagColor(e.tag);
   const tag = e.tag ? `<span class="tag" style="${tc ? `color:${tc};border-color:${tc}44` : ''}">${esc(e.tag)}</span>` : '';
+  // 没时间的喊话（手写时没带前缀、或前缀格式写坏）**不许拿"现在"顶上** ——
+  // 那会让一条老消息看起来像刚说的。留空 + 说明，比编一个时间诚实。
+  const tm = (e.kind === 'user' && !e.time)
+    ? `<span class="tm" title="这条没带时间前缀（或前缀写坏了），按它在 user.md 里的位置排序">--:--:--</span>`
+    : `<span class="tm">${esc(e.time)}</span>`;
   return `<div class="row ${esc(e.kind)}" style="border-left-color:${col}">
     <div class="head"><span class="who" style="color:${col}">${who}</span>
-      <span class="tm">${esc(e.time)}</span>${tag}</div>
+      ${tm}${tag}</div>
     <div class="tx">${esc(e.text)}</div></div>`;
 }
 function matches(e, f){
@@ -315,7 +326,9 @@ function bannerHtml(data){
 function agentRow(a, staleAfter){
   const col = colorOf(a.name);
   const ratio = staleAfter > 0 ? Math.min(1, a.silence / staleAfter) : 0;
-  const cls = ratio >= 1 ? 'bad' : ratio >= 0.7 ? 'warn' : '';
+  // 离线行的静默条走中性灰（off）：红色进度条催人去救，而它多半已经不在了。
+  // 已离场的行在上面就被过滤掉了，根本不会走到这里。
+  const cls = a.state === '离线' ? 'off' : ratio >= 1 ? 'bad' : ratio >= 0.7 ? 'warn' : '';
   // 「在等谁」——多路 await 时会有多个 id，全部列出来（等待图就是靠这些边判死锁的）
   const ids = a.waiting_ids || [];
   const wait = ids.length
@@ -325,14 +338,54 @@ function agentRow(a, staleAfter){
     ? ` <span class="hot" title="近 2 分钟发了这么多条：可能在与别人乒乓">${a.posts_per_min}/min</span>` : '';
   const hold = a.holding_until
     ? `<span class="tag" title="长任务静默豁免至 ${esc(a.holding_until)}">挂起</span>` : '';
+  // 「疑似卡死」最容易误伤正在跑长任务、只是没声明的人。把补救命令直接摆在它旁边——
+  // 光看一个红字状态，收到告警的 agent 不知道该怎么办，只会补一条心跳、过 90s 又被报（实测刷到上千条）。
+  // ★ 只给疑似卡死：hold 是给还活着的线声明用的 —— 离线行（进程多半没了）不显示，
+  //   否则就是用户截图抓到的那种「对着消失的进程挂补 hold 按钮」。
+  const fix = a.state === '疑似卡死' && !a.holding_until
+    ? `<span class="tag" style="cursor:pointer"
+         title="若它其实在跑长任务：work_log.py hold --agent ${esc(a.name)}（默认 10 分钟），再 post 一条心跳，本条告警会自动撤回"
+         onclick="copyHold('${esc(a.name)}')">补 hold</span>` : '';
+  // 状态词本身容易被读成「人没了」——尤其「挂起中」：用户连问三次『怎么又挂了/又退了』。
+  // 状态不改（引擎的词），但把「它到底算不算在线」直接写在悬停提示里。
+  const stateTip = a.state === '挂起中'
+    ? '在线待命，不是下线：hold 只挡看门狗，这期间喊话/被 ask 一来就会唤醒它；到点不续期才会转为「疑似卡死」'
+    : a.state === '心跳中' ? '在线干活中'
+    : a.state === '完成' ? '已收工（写过「任务完成」）——再发一条心跳会自动复位为在线'
+    : a.state === '待启动' ? '登记了名字但从没写过心跳（永不告警）'
+    : a.state === '疑似卡死' ? '静默超阈值且没声明 hold —— 先分清「在跑长任务没声明」还是真卡死，补救命令见右侧按钮'
+    : a.state === '离线' ? '静默已到小时量级 —— 多半是进程没了，不是卡死；去救没意义：等它自己 post 回来（告警自动撤回），或按接管纪律替它收尾并 ack'
+    : '';
   return `<tr>
       <td class="n"><span class="adot" style="background:${col}"></span>
         <span style="color:${col}">${esc(a.name)}</span></td>
-      <td><span class="st ${esc(a.state)}">${esc(a.state)}</span>${hold}</td>
+      <td><span class="st ${esc(a.state)}" title="${esc(stateTip)}">${esc(a.state)}</span>${hold}${fix}</td>
       <td class="r">${a.silence}s<div class="bar"><i class="${cls}" style="width:${Math.round(ratio*100)}%"></i></div></td>
       <td class="r">${wait}</td>
       <td class="r">${a.entries} 条${hot}</td></tr>`;
 }
+// 点「补 hold」= 把补救命令复制进剪贴板（一键，省得手敲 agent 名敲错）
+function copyHold(name){
+  const cmd = `worklog hold --agent ${name} --seconds 600`;
+  navigator.clipboard?.writeText(cmd).then(
+    () => flash('已复制：' + cmd + '（在它那边跑，或由你代跑）', true),
+    () => flash('复制失败，请手工执行：' + cmd, false));
+}
+// 点顶栏「未确认告警」= 全部确认（与 CLI `ack` 同语义；后端 /api/ack 复用同一个内核）
+async function ackAll(){
+  try{
+    const r = await fetch('api/ack', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({by:'用户'})});
+    const j = await r.json();
+    if(!j.ok){ flash('确认失败：' + (j.error || r.status), false); return; }
+    flash(`✓ 已确认 ${j.hit} 条告警`, true);
+    render.last = null; tick();
+  }catch(e){
+    flash('确认失败：服务不可达', false);
+  }
+}
+document.getElementById('unacked').addEventListener('click', ackAll);
 function render(data){
   const items = data.entries || [];
   lastItems = items;
@@ -370,16 +423,29 @@ function render(data){
     : (data.watchdog_stale ? `看门狗：⚠ 已静默 ${data.watchdog_idle}s`
                            : `看门狗：${data.watchdog_idle}s 前扫过`);
   document.getElementById('meta').textContent =
-    `${data.generated_at} · 心跳 ${data.heartbeat_secs}s · 阈值 ${data.stale_after}s · ${wd}`
-    + (data.unacked ? ` · 未确认告警 ${data.unacked}` : '');
+    `${data.generated_at} · 心跳 ${data.heartbeat_secs}s · 阈值 ${data.stale_after}s · ${wd}`;
+  // 「未确认告警 N」做成能点的：用户是人在浏览器里，不该为了清积压去敲 CLI。
+  const ua = document.getElementById('unacked');
+  if(data.unacked){
+    ua.style.display = '';
+    ua.textContent = `⚠ 未确认告警 ${data.unacked} · 点此确认`;
+  }else{
+    ua.style.display = 'none';
+  }
   const cb = data.collab || {count:0, agents:[], active:false, required:2};
   const cel = document.getElementById('collab');
+  const cmin = cb.required ?? 2;
+  // ⚠ 只报"现在有几个在干活"，**不写分母**：同时在干活的人数不固定（3~6 个很常见、随时增减），
+  // 写成 "N/2" 会被读成"上限两人 / 还有空位"，把不定量说成定量。门槛只作 title 里的提示。
+  const cwho = (cb.agents && cb.agents.length) ? cb.agents.join('、') : '';
   cel.textContent = cb.active
     ? `🤝 协作中：${cb.count} 人在干活`
-    : `协作：${cb.count}/${cb.required ?? 2} 在干活`;
+    : `协作：${cb.count} 人在干活`;
   cel.className = 'collab' + (cb.active ? ' on' : '');
-  cel.title = cb.agents && cb.agents.length ? '在干活：' + cb.agents.join('、')
-              : '还没有 agent 在干活';
+  cel.title = (cwho ? `正在干活 ${cb.count} 人：${cwho}` : '还没有 agent 在干活')
+    + `\n\n人数不固定、也不设上限 —— 任何 agent 开工都即时计入，几个都能接；`
+    + `\n「协作中」标记只是"够热闹"的下限提示，本板设 ≥${cmin} 人`
+    + `（改：work_log.py init --collab-min N）。`;
   // 等待图区常驻在 feed 之上，**不受过滤器影响** —— 危险信息不该被一个 tab 藏起来
   document.getElementById('hazards').innerHTML = hazardsHtml(data);
   renderFeed();
@@ -402,12 +468,15 @@ function render(data){
     }));
   }
   const at = document.getElementById('agents');
+  // 宣告离场（retire）= 人拍板「不会再回来」⇒ 人看的表里直接不出现（2026-09-30 用户拍板）。
+  // 数据层不删：/api 仍含它（state 已离场），undo 与驱动层还要用；它 post 一条即自动复位。
+  const live = data.agents.filter(a => a.state !== '已离场');
   at.innerHTML = '<tr><th>agent</th><th>状态</th><th class="r">静默</th>'
     + '<th class="r">在等</th><th class="r">发帖</th></tr>'
-    + (data.agents.map(a => agentRow(a, data.stale_after)).join('')
+    + (live.map(a => agentRow(a, data.stale_after)).join('')
        || '<tr><td colspan="5" style="color:var(--fg3)">无 agent</td></tr>');
   document.getElementById('n-agents').textContent =
-    data.agents.length ? `（${data.agents.length}）` : '';
+    live.length ? `（${live.length}）` : '';
   const lk = document.getElementById('locks');
   const keys = Object.keys(data.locks || {});
   document.getElementById('n-locks').textContent = keys.length ? `（${keys.length}）` : '';
@@ -454,13 +523,28 @@ function clearReplyMode(){
   mode.style.display = 'none';
   say.placeholder = '对 agent 们说点什么，回车发送…（按 / 聚焦）';
 }
+// ---- 输入法（IME）安全：中文/日文输入法组字时按回车是「选字/上屏」，不是「发送」。
+// 只判 e.key==='Enter' 会把拼音回车上屏直接当发送（实测：打拼音一敲回车就发出去了）。
+// 三重防护：① isComposing ② keyCode 229（旧内核组字态）③ compositionend 后 80ms 内的回车也忽略
+//（部分浏览器在 compositionend 之后仍补发一个 keydown，此时 isComposing 已是 false）。
+let composing = false, composedAt = 0;
+say.addEventListener('compositionstart', () => { composing = true; });
+say.addEventListener('compositionend', () => { composing = false; composedAt = Date.now(); });
+function isImeEnter(e){
+  return e.isComposing || e.keyCode === 229 || composing
+      || (Date.now() - composedAt) < 80;
+}
 say.addEventListener('keydown', e => {
-  if(e.key === 'Escape') clearReplyMode();
-  if(e.key === 'Enter') sendMsg();
+  if(e.key === 'Escape'){ clearReplyMode(); return; }
+  if(e.key !== 'Enter') return;
+  if(isImeEnter(e)) return;               // 组字/上屏的回车：交给输入法，不发送
+  e.preventDefault();
+  sendMsg();
 });
 // `/` 直接聚焦输入框（不在输入框里时才生效）——少一次鼠标
 document.addEventListener('keydown', e => {
   if(e.key === '/' && document.activeElement !== say){
+    if(e.isComposing || e.keyCode === 229) return;
     e.preventDefault();
     say.focus();
   }

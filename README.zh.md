@@ -4,7 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%20%7C%203.13-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![零依赖](https://img.shields.io/badge/dependencies-0-2ea44f)](#依赖)
-[![断言](https://img.shields.io/badge/assertions-394%20passing-2ea44f)](docs/VALIDATION.md)
+[![断言](https://img.shields.io/badge/assertions-656%20passing-2ea44f)](docs/VALIDATION.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![中文文档](https://img.shields.io/badge/docs-中文-1f6feb)](#30-秒上手) [![English](https://img.shields.io/badge/docs-English-6e7781)](README.en.md)
 
@@ -17,13 +17,19 @@
 
 ---
 
-## 它解决三个真实失败模式
+## 它解决四个真实失败模式
 
 | 失败模式 | 现象 | work-log 怎么抓 |
 |---|---|---|
 | **静默卡死** | agent 进程还在，但已经 10 分钟没动静；你要主动去问才发现 | 每 15s 扫一次看板，静默超过阈值**且没写「任务完成」**→ 标红 + 写告警给在线 agent 接管 |
+| **事情丢了没人知道** | A 问了 B 一个问题，B 没答 —— 而 A、B 的心跳**全是绿的**。等待图也看不见：A 可能根本没在 `await`，只是忘了这回事 | **第二根轴（办事轴）**：直接盯「有没有提问开着没人答」，开够久就报 `[事故]` 并让 `check` 退 `1`；对方已收工的归 `[该结案]`（不是事故，只是提醒提问者去收尾） |
 | **心跳全绿的死锁** | 两个 agent 互相问了问题，然后**都在等对方回答**。心跳都是绿的（等的时候会自动续），看门狗一个都抓不到 —— 但团队已经死了 | **等待图**：`await` 期间把等待关系写进共享状态，据此检出 `[不可达等待]`（对方已收工，答案永远不会来）与 `[互相等待]`（真死锁） |
 | **预算烧在互相客套** | 两个 agent「好的」「收到」「那就这样」来回十几轮，或者一个 agent 陷入循环把预算刷在心跳上 | **通信熔断**：连续交替 ≥6 轮提醒、≥12 轮直接拒绝写入；心跳预算 60 条/分钟，超了拒绝且**不刷新存活时间**（于是它同时会被判定为空转） |
+
+> 第二类是本项目最贵的那个教训：加了心跳看门狗之后，**误报 33 条、真事故 0 告警** ——
+> 而唯一一次真事故（一条提问被静默丢弃 547 秒）从头到尾没人知道。
+> 调阈值救不了，因为错的是**观测口径**：心跳只能回答「它还在吗」，
+> 回答不了「该办的事还在不在」。所以现在是两根轴，各管一半。
 
 > 第三类特别隐蔽：**从看板看它们是"最健康的两个人"**（一个聊得最起劲、一个刷得最勤），
 > 实际上一个在烧 token、一个在烧循环。
@@ -33,7 +39,7 @@
 打开 **[`docs/preview.html`](docs/preview.html)** —— 单文件、零依赖、离线可看。
 一页七幕，全是**真实输出**（前四幕取自 `examples/demo-output.txt`，第五幕取自 `examples/doctor-output.txt`，第六幕取自 `examples/onboard-output.txt`，第七幕命令逐条跑过、见自测第 `[36]` 组）：
 
-> 看门狗抓静默卡死 · 等待图抓「心跳全绿的死锁」· 通信熔断叫停乒乓 · 多路等待任一达成 · **接入自查 `doctor`** · **接入片段 `onboard`** · **固定 agent 名字 + 换台电脑还能用**
+> 看门狗抓静默卡死 · 等待图抓「心跳全绿的死锁」· 通信熔断叫停乒乓 · 多路等待任一达成 · **接入自查 `doctor`** · **接入片段 `onboard`**（含「怎么被别人问到」—— 只教 `ask` 是单向的）· **固定 agent 名字 + 换台电脑还能用**
 
 （GitHub 网页不渲染 HTML，clone 下来用浏览器打开即可；也可以自己开 GitHub Pages 把它发到线上。）
 
@@ -42,11 +48,9 @@
 不需要 API key、不需要模型、不在你的项目里留任何文件：
 
 ```bash
-git clone https://github.com/YangLiHaoLiuYing/Work-Log.git ~/.workbuddy/skills/work-log
+git clone https://github.com/YangLiHaoLiuYing/work-log.git ~/.workbuddy/skills/work-log
 bash ~/.workbuddy/skills/work-log/examples/demo.sh
 ```
-
-（**已经在本地有这份代码**就跳过 clone，直接 `bash examples/demo.sh`。演示约 20 秒。）
 
 演示会依次跑出上面三类故障的真实输出（看门狗抓卡死 → 等待图抓死锁 → 熔断叫停乒乓 → 多路等待）。
 完整输出存在 [`examples/demo-output.txt`](examples/demo-output.txt)，可以直接先看那个。
@@ -73,32 +77,30 @@ agent2       心跳中    最后 03:31:37  静默    0.1s  条目   1
 ```bash
 WL="$HOME/.workbuddy/skills/work-log/scripts/work_log.py"
 
-# 1) 初始化一块看板（默认落在 ~/Desktop/work-log/<当前目录名>/，按项目隔离）
-python3 "$WL" init --task "给角色加语音开关，改 3 个文件" --agents agent1,agent2
+# 0) 板目录必须显式给：引擎没有默认落点（缺 --dir 退 2 并指路，不再默认桌面）
+D="$PWD/.workbuddy/work-log"
+
+# 1) 初始化一块看板（阈值在这里声明一次，之后所有看门狗都听）
+python3 "$WL" --dir "$D" init --task "给角色加语音开关，改 3 个文件" --agents agent1,agent2 --stale-after 90
 
 # 2) 另开一个终端：起看门狗（每 15s 扫一次，卡死就告警）
-python3 "$WL" watch &
+python3 "$WL" --dir "$D" watch &
 
-# 3) 再另开一个：浏览器实时视图（默认 http://localhost:8787，用 --port 换）
-python3 "$WL" serve
+# 3) 再另开一个：浏览器实时视图，肉眼看得见它们怎么聊
+python3 "$WL" --dir "$D" serve
 
 # 4) 每个 agent 每 ≤15s 写一条心跳
-python3 "$WL" post --agent agent1 --text "收到用户要求：加语音开关。我现在要改 tts.py。" --tag 收到
+python3 "$WL" --dir "$D" post --agent agent1 --text "收到用户要求：加语音开关。我现在要改 tts.py。" --tag 收到
 ```
-
-> **界面地址以它自己打印的那行为准** —— `serve` 启动会打出 `http://localhost:<端口>/`，默认 **8787**。
-> 一个容易困惑的坑：`init --no-auto-ui` 会关掉「第 2 个 agent 开工时自动起 serve + 弹浏览器」，
-> 而且**没有反向开关**（只能改看板目录里 `state.json` 的 `auto_ui`）。
-> 用了它，界面**不会自己出现**，得手敲 `serve` —— 看板目录看 `init` 的输出。
 
 每个 agent 的循环模板（写进它的系统提示里）：
 
 ```text
-1. python3 "$WL" brief --agent <我>     # 取增量：别人的心跳 + 用户喊话 + 告警
+1. python3 "$WL" --dir "$D" brief --agent <我>     # 取增量：别人的心跳 + 用户喊话 + 告警
 2. 干活
-3. python3 "$WL" post --agent <我> --text "<一句话说清我现在在干嘛>"
-4. 干完了： post --agent <我> --text "全部完成，改了 a.py/b.py" --tag 任务完成
-   要跑长任务： hold --agent <我> --reason "构建" --for 1800
+3. python3 "$WL" --dir "$D" post --agent <我> --text "<一句话说清我现在在干嘛>"
+4. 要跑长任务： hold --agent <我> --seconds 1800 --text "构建"（post 不会解除挂起；提前收工用 release）
+5. 干完了： post --agent <我> --text "全部完成，改了 a.py/b.py" --tag 任务完成 --done
 ```
 
 ## agent 之间真的对话（不是各写各的日记）
@@ -137,7 +139,7 @@ python3 "$WL" await --agent agent1 --id 1,2,3 --any --timeout 300
 | `0` | 成功 / 全员健康 | — |
 | `1` | `check` 发现卡死**或有协作险情**；`await` 超时 | **业务** |
 | `2` | 用法 / 前置条件错误（编号不存在、空文本、问自己、`--id 0`…） | 用法 |
-| `3` | 对端已收工 / 抢锁冲突 | **业务** |
+| `3` | **已被别人处置**：对端已收工 / 资源已被占 / 喊话已被认领 | **业务** |
 | `4` | 被通信熔断或心跳预算拒绝 | **业务** |
 | `70` | 工具自己坏了（软件 bug） | 基础设施 |
 
@@ -147,36 +149,29 @@ python3 "$WL" await --agent agent1 --id 1,2,3 --any --timeout 300
 
 ## 命令行速查
 
-24 个子命令，按用途分组：
+28 个子命令，按用途分组：
 
 | 分组 | 命令 |
 |---|---|
-| 心跳 | `init` `post` `hold` `release` `tail` |
+| 心跳 | `init` `post` `hold` `release` `waker`（保持在线：板上有事就叫醒你）`tail` |
 | 定向问答 | `ask` `reply` `await` `brief` `ack-user` `read-user` |
-| 监督 | `check` `status` `watch` `ack` |
-| 身份 | `identity`（**名字登记表**：谁在这块板上叫什么、从哪来；别的目录抢同一个名字会被**拒绝**） `whoami`（我叫什么、**凭什么**认出来的） |
-| 接入体检 | `onboard`（**把接入片段交给第二个 agent**：默认只打印，`--to user\|opencode-global\|repo\|…` 才落盘，幂等且拒绝覆盖手写协议；`--detect` **只探测本机装了哪些工具链**、`--to auto` 按探测结果逐个落跨目录档，探测不到退 `1`） `doctor`（**我这条线有没有被拉起来**：六项 —— cwd 指令文件 · 记忆里的板坐标 + 报到义务 · 我最近在不在报到 · **名字固定住了没有** · 告警有没有盖住发言） |
+| 监督 | `check` `status` `watch` `ack` `retire`（宣告某 agent 离场：不再判卡死、告警停，`--undo` 可撤） |
 | 资源锁 | `lock` `unlock` `locks` |
+| 接入与维护 | `onboard`（生成接入片段）`claim`（多实例认领名字：框架名+空号，号码永不复用）`identity` `whoami`（名字登记）`doctor`（接入自查）`prune`（归档过老历史） |
 | 人看的 | `serve`（浏览器实时视图，含协作徽章） `say`（用户随时插话） |
-
-**`--agent` 可以省**：先看 `$WORK_LOG_AGENT`（给会话钉死），再看板上 `identities.json`
-里 cwd 匹配的那条（给目录钉死）；两条都不成立就退 `2` 并打印该跑的命令 —— **不猜**，
-因为猜错会让两个会话静默共用一个身份（心跳、游标、`awaiting` 全混在一起，板上看不出来）。
-
-**接入片段里不含引擎的绝对路径**：`init` 会在看板目录里落一个可执行的 `worklog` 引导脚本，
-它钉死 `--dir` 并**自己找引擎**。所以整包搬到另一台电脑、或换个别的 agent，协议照样能用。
 
 **多人协作即启动条件**：≥2 个 agent 同时在干活，看板自动亮起「协作」标记
 （`status` / `serve` 页 / 看板事件三处可见）。**用户可直接参与对话**：agent
 `ask --to 用户` 提问，你 `reply --agent 用户 --id N` 回答，对方 `await` 立刻拿到。
 
-完整参数见 `python3 scripts/work_log.py --help`，协议细节见 [`references/protocol.md`](references/protocol.md)。
+完整参数见 `python3 scripts/work_log.py --help` 或 [`references/cli.md`](references/cli.md)；
+协议细节见 [`references/protocol.md`](references/protocol.md)。
 
 ## 验收数据
 
 不是"写完就发"，是跑过的：
 
-- **394 条断言 / 39 个测试组 / 0 失败**，在 **Python 3.9.6 与 3.13.12 上各自全绿**
+- **698 条断言 / 61 个测试组 / 0 失败**，在 **Python 3.9.6 与 3.13.12 上各自全绿**
 - **真机验证**：用真实模型（OpenAI 兼容端点）驱动 2 个 agent 走完整协议 3 轮 ——
   双向问答全部闭环、决定里能引用对方原话、面对相冲突的用户要求走「阻塞 + 协商 + 显式折中」、
   看门狗全程 0 条误报
@@ -212,7 +207,7 @@ python3 "$WL" await --agent agent1 --id 1,2,3 --any --timeout 300
 <summary><b>A. 作为 WorkBuddy / Claude Code 的 Skill（推荐）</b></summary>
 
 ```bash
-git clone https://github.com/YangLiHaoLiuYing/Work-Log.git ~/.workbuddy/skills/work-log
+git clone https://github.com/YangLiHaoLiuYing/work-log.git ~/.workbuddy/skills/work-log
 ```
 
 放到 skills 目录后，`SKILL.md` 会被自动识别 —— agent 会在「多个 agent 并行」「有没有 agent 卡死」
@@ -225,10 +220,7 @@ git clone https://github.com/YangLiHaoLiuYing/Work-Log.git ~/.workbuddy/skills/w
 <summary><b>B. 只用 CLI，不装 skill</b></summary>
 
 ```bash
-# 显式给出目标目录名（末尾那个 work-log）：仓库叫 Work-Log，而本工具一律按小写 work-log 引用。
-# 不给目标目录的话 clone 出来的是 Work-Log/，下面两行的路径在 Linux 上就对不上了
-# —— macOS 的文件系统大小写不敏感，本地完全看不出问题，所以这里写死。
-git clone https://github.com/YangLiHaoLiuYing/Work-Log.git work-log
+git clone https://github.com/YangLiHaoLiuYing/work-log.git
 WL="$PWD/work-log/scripts/work_log.py"
 python3 "$WL" init --agents a1,a2
 ```
@@ -252,40 +244,47 @@ python3 "$WL" init --agents a1,a2
 
 ```
 work-log/
-├── SKILL.md                 ← 给 agent 读的说明书（触发条件 / 命令表 / 坑清单）
+├── SKILL.md                 ← 给 agent 读的说明书（触发条件 / 判据 / 常用命令 / 铁律）
 ├── scripts/
-│   ├── work_log.py         引擎：零依赖单文件，24 个子命令
+│   ├── work_log.py         引擎：零依赖单文件，28 个子命令
 │   ├── llm_agent.py         用任意 OpenAI 兼容端点把真模型当 agent 驱动起来（验收就用它）
-│   ├── selftest.sh          394 条断言的回归套件（39 组 0 失败，3.9 与 3.13 双版本）
+│   ├── waker.sh            外部唤醒器：让响应式会话真的能被叫醒（只叫醒，不替人回话）
+│   ├── ask_listener.sh     把「有人 ask 我」也变成可自动应答的事件（常驻 bot 用）
+│   ├── selftest.sh          698 条断言的回归套件（61 组 0 失败，3.9 与 3.13 双版本）
 │   └── check_stdlib_only.py 挡住"不小心引入第三方依赖"，CI 里跑
-├── references/protocol.md   协议规格：状态机 / 退出码 / 看板文法 / 设计权衡
+├── references/
+│   ├── protocol.md          协议规格：状态机 / 退出码 / 看板文法 / 设计权衡
+│   ├── usage.md             使用详解：SKILL.md 的证据层（每个设计为什么、完整示例、实测数字）
+│   ├── cli.md               全部子命令与选项
+│   ├── identity.md          「像宿主」的完整判据、同名多实例识别
+│   ├── verification.md      真模型验收、驱动层踩过的坑
+│   ├── integration.md       跨工具链接入四步 + 自查自己那侧
+│   └── pitfalls.md          踩坑清单（带现场与后果）
 ├── assets/viewer.html       实时视图页面（serve 提供）
 ├── examples/
 │   ├── demo.sh              60 秒演示（不需要 key，不留文件）
-│   ├── demo-output.txt      前四幕的真实捕获
+│   ├── demo-output.txt      前四幕的真实捕获（演示脚本的完整输出）
 │   ├── doctor-output.txt    第五幕的真实捕获（接入自查）
 │   └── onboard-output.txt   第六幕的真实捕获（接入片段）
 │       （第七幕「固定名字 + 可移植」的命令由 scripts/selftest.sh 第 [36] 组逐条跑）
 └── docs/                    发布与设计文档（见下）
 ```
 
+> `SKILL.md` 是**判据层**（每个决定怎么做、什么情况算通过），
+> `references/` 是**证据层**（实测数字、逐步操作、踩坑现场）—— 结论不够用时再去读对应那份。
+
 ## 开发与自测
 
 ```bash
-# 改完 scripts/*.py 必跑（本机 M1 实测 1m34s；只在临时目录里折腾，不碰项目文件）
+# 改完 scripts/*.py 必跑（约 3 分钟，只在临时目录里折腾，不碰项目文件）
 bash scripts/selftest.sh
 
 # 只检查"有没有混进第三方依赖"（秒级，CI 里也跑）
 python3 scripts/check_stdlib_only.py
-
-# 改了 *.sh：`bash -n` 只查语法，查不出「$变量 紧跟中文标点」这类**运行期**才炸的错
-# （macOS 自带的 bash 3.2 会把标点首字节吞进变量名，当场 unbound variable 中止）—— 要真跑一遍
-bash examples/demo.sh > /dev/null
 ```
 
 CI 已经配好（`.github/workflows/test.yml`）：Ubuntu + macOS × Python 3.9 + 3.13 四个组合，
-跑 shell 语法检查 + **一条静态护栏**（挡的就是上面那个 `$变量` 紧跟非 ASCII 的写法 ——
-`bash -n` 抓不到它）、依赖检查、394 条断言、以及 60 秒演示。
+跑 shell 语法检查、依赖检查、698 条断言、以及 60 秒演示。
 
 测试套件覆盖并发写不丢行、告警冷却与升级、跨天分节、脏输入健壮性、HTTP 视图接口、
 退出码契约（18 种坏调用），以及**上面三类故障各自的检出与误报边界**。
@@ -298,12 +297,18 @@ CI 已经配好（`.github/workflows/test.yml`）：Ubuntu + macOS × Python 3.9
 | 文档 | 内容 |
 |---|---|
 | [`docs/DESIGN.md`](docs/DESIGN.md) | 设计决策：为什么这么写、刻意不做什么、踩坑记录 |
-| [`docs/VALIDATION.md`](docs/VALIDATION.md) | 验收：394 条断言 + 真机 3 轮 + 性能数字 + 复现方法 |
+| [`docs/VALIDATION.md`](docs/VALIDATION.md) | 验收：698 条断言 + 真机 3 轮 + 性能数字 + 复现方法 |
 | [`docs/preview.html`](docs/preview.html) | **效果预览页**：七幕真实输出的可视化（单文件、离线可看） |
 | [`docs/PUBLISH.md`](docs/PUBLISH.md) | 发布手册：一步步推到 GitHub / Gitee、配 topics、发 release |
 | [`docs/LAUNCH.md`](docs/LAUNCH.md) | 发布文案：仓库简介、topics、各平台帖子（可直接用） |
+| [`references/usage.md`](references/usage.md) | 使用详解：SKILL.md 的证据层（完整循环、部署、实测数字） |
 | [`references/protocol.md`](references/protocol.md) | 协议规格：状态机、看板文法、退出码契约 |
-| [`SKILL.md`](SKILL.md) | 给 agent 用的操作手册 |
+| [`references/cli.md`](references/cli.md) | 全部子命令与选项（`SKILL.md` 里只留常用的一份简表） |
+| [`references/identity.md`](references/identity.md) | 名字固定、同名多实例、「像宿主」的完整判据 |
+| [`references/verification.md`](references/verification.md) | 真模型验收方法、驱动层的 5 个坑、判定标准 |
+| [`references/integration.md`](references/integration.md) | 跨工具链接入四步 + 自查自己那侧（含四条可当场验的 grep） |
+| [`references/pitfalls.md`](references/pitfalls.md) | 踩坑清单（带现场与后果） |
+| [`SKILL.md`](SKILL.md) | 给 agent 用的操作手册（判据层，配合上面的证据层一起读） |
 
 ## License
 

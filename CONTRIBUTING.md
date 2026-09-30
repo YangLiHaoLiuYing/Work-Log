@@ -6,10 +6,10 @@
 ## 最快上手
 
 ```bash
-git clone https://github.com/YangLiHaoLiuYing/Work-Log.git work-log
+git clone https://github.com/YangLiHaoLiuYing/work-log.git
 cd work-log
 bash examples/demo.sh        # 60 秒看懂它在干嘛（不需要 key，不留文件）
-bash scripts/selftest.sh     # 394 条断言，本机 M1 实测 ~1m40s
+bash scripts/selftest.sh     # 698 条断言，空载约 3 分钟（同时跑多份会明显变慢，实测被拖到 8 分钟以上）
 ```
 
 实测一遍 demo，再读 [`docs/DESIGN.md`](docs/DESIGN.md) 里那几个「刻意不做」的决定，
@@ -36,7 +36,9 @@ bash scripts/selftest.sh     # 394 条断言，本机 M1 实测 ~1m40s
   - 「还在动但方向错了」（心跳正常、一直在改错文件 / 无限重试）
   - 「卡在等外部条件」（CI 队列、模型下载、端口占用）
 - **降低误报。** 任何一个假阳性都会让人再也不看告警。带复现的误报 issue 非常受欢迎。
-- **文档里补"坑"。** 你在真实使用中踩到的坑，写进 `SKILL.md` 的「坑」一节。
+- **文档里补"坑"。** 你在真实使用中踩到的坑，写进 `references/pitfalls.md`；
+  如果那条坑会改变**判据**（什么时候算通过、什么时候该拒绝），再在 `SKILL.md` 正文里加一行判据
+  并指过去。**正文只放判据，现场和数字放 references** —— 这样每次载入的上下文才不会被历史细节撑爆。
 
 ## 什么不会收
 
@@ -53,26 +55,9 @@ bash scripts/selftest.sh     # 394 条断言，本机 M1 实测 ~1m40s
 git checkout -b fix/watchdog-false-positive
 # 改代码 + 加断言
 bash scripts/selftest.sh
-bash examples/demo.sh > /dev/null    # 改了任何 *.sh 都要**真跑**，见下方说明
-pgrep -fl 'work_log.py.*serve'       # 跑完不该多出 serve 进程（只该有你自己的那块板）
+bash -n scripts/selftest.sh          # 改了测试脚本一定要跑这个
 git commit -m "fix: 看门狗不再把 hold 中的 agent 判成卡死"
 ```
-
-> **`bash -n` 不够，必须真跑一遍。** 它只查语法：`$变量` 后面紧跟中文标点
-> （如 `echo "退出码 $rc（业务）"`）在 macOS 自带的 **bash 3.2** 下会把标点首字节吞进变量名，
-> 报 `rc?: unbound variable` 当场中止 —— 而 `bash -n` 认为这完全合法。
-> 0.5.1 在 `selftest.sh` 里修过 6 处这种写法，却**漏了** `examples/demo.sh`，
-> 结果演示跑到一半就崩、退出码 1（0.5.2 才补上）。CI 里现在有一条静态护栏专门挡这一类。
-
-> **演示脚本还必须"跑完不留痕"。** `demo.sh` 承诺"在临时目录里跑、退出自动清理"，
-> 这条承诺有两处很容易破：
-> ① 每个 `init` 都要带 `--no-auto-ui` —— 否则"第 2 个 agent 上线"会自己起一个后台 `serve`
-> 并弹浏览器，而 `cleanup()` 只杀它自己记下的 PID，那些 `serve` 会留下来，
-> 一直服务一个本该被删掉的临时目录（实测清出过 3 个跑了 1 天 20 小时的残留，占着 8787/8789/8790）；
-> ② **后台任务不能包在函数里** —— `run ... &` 起的是一个子 shell，`$!` 拿到的是那个子 shell 的 PID，
-> `kill $!` 杀不到真正的 python；它会变成孤儿跑满 timeout，然后在本脚本结束**之后**
-> 把刚删掉的目录又写回来，于是"不留痕"就成了假话。
-> 两处都是 2026-09-24 实测踩到才发现的。验证方式就是上面那条 `pgrep`。
 
 commit message 用 `fix:` / `feat:` / `docs:` / `test:` / `perf:` 前缀即可。
 

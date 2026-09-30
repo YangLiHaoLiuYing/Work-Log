@@ -79,6 +79,7 @@
              background:#1f1416;border:1px solid #4a2024;border-left:4px solid var(--bad);
              color:#fca5a5}
   .alertline .wd{color:var(--fg2)}
+  .alertline.dim{background:#161b24;border-color:#2b3446;border-left-color:#6b7280;color:#9aa3b2}
 
   /* ── 险情条（本工具独有）───────────────────────────── */
   .hz{border:1px solid #6b2626;border-left:4px solid var(--bad);border-radius:9px;
@@ -147,7 +148,7 @@
   <!-- ══ Hero ══ -->
   <div class="hero">
     <div class="pills">
-      <span class="pill ok">32 组 290 条断言全绿</span>
+      <span class="pill ok">58 组 656 条断言全绿</span>
       <span class="pill info">零第三方依赖</span>
       <span class="pill">Python 3.9+</span>
       <span class="pill">单文件引擎</span>
@@ -159,8 +160,10 @@
       把<b>谁静默了、谁和谁互相等死了、谁在无限客套</b>直接摆到页面上。
     </p>
     <p class="src">
-      本页所有数据均取自仓库内 <code>examples/demo-output.txt</code> ——
-      那是这套 CLI 的<b>真实输出</b>，未经美化。
+      本页所有数据均取自仓库内 <code>examples/</code> 的真实输出捕获
+      （前四幕 <code>demo-output.txt</code>、第五幕 <code>doctor-output.txt</code>、
+      第六幕 <code>onboard-output.txt</code>；第七幕的命令逐条跑过，见 <code>scripts/selftest.sh</code> 第 <code>[36]</code> 组）——
+      <b>未经美化</b>，本机路径已换成了占位。
     </p>
   </div>
 
@@ -172,13 +175,13 @@
     </div>
     <p class="desc">
       三个 agent 都在写心跳，<b>agent3 写到一半不吭声了</b>。
-      看门狗扫描时发现它静默 4.5 秒、超过阈值 3 秒，且没写「任务完成」——
-      于是标红告警。只有 agent3 变红，另外两个静默 0.3 秒属于正常，<b>不会被误报</b>。
+      看门狗扫描时发现它静默 5.7 秒、超过阈值 3 秒，且没写「任务完成」——
+      于是标红告警。只有 agent3 变红，另外两个静默 1.0 / 0.5 秒属于正常，<b>不会被误报</b>。
     </p>
     <div class="stage">
       <div class="board">
-        <div class="bhead">work-log · 03:32:30 · <span class="where">/tmp/…/stuck/board.md</span></div>
-        <div class="bmeta mono">任务：演示：谁卡死了　　心跳周期 15s　　卡死阈值 3s　　上次扫描：0s 前</div>
+        <div class="bhead">work-log · 02:31:56 · <span class="where">/tmp/…/stuck/board.md</span></div>
+        <div class="bmeta mono">任务：演示：谁卡死了　　心跳周期 15s　　卡死阈值 3s　　办事轴 600s　　上次扫描：0s 前</div>
         <table>
           <thead>
             <tr><th>agent</th><th>状态</th><th>最后心跳</th><th class="r">静默</th><th class="r">条目</th><th></th></tr>
@@ -187,37 +190,44 @@
             <tr>
               <td class="who">agent1</td>
               <td><span class="st ok">心跳中</span></td>
-              <td class="mono">03:32:30</td>
-              <td class="r mono">0.3s<div class="bar"><i style="width:10%"></i></div></td>
+              <td class="mono">02:31:55</td>
+              <td class="r mono">1.0s<div class="bar"><i style="width:33%"></i></div></td>
               <td class="r mono">2</td><td></td>
             </tr>
             <tr>
               <td class="who">agent2</td>
               <td><span class="st ok">心跳中</span></td>
-              <td class="mono">03:32:30</td>
-              <td class="r mono">0.2s<div class="bar"><i style="width:7%"></i></div></td>
+              <td class="mono">02:31:55</td>
+              <td class="r mono">0.5s<div class="bar"><i style="width:17%"></i></div></td>
               <td class="r mono">2</td><td></td>
             </tr>
             <tr class="dead">
               <td class="who">agent3</td>
               <td><span class="st bad">疑似卡死</span></td>
-              <td class="mono">03:32:25</td>
-              <td class="r mono">4.5s<div class="bar"><i class="bad" style="width:100%"></i></div></td>
+              <td class="mono">02:31:50</td>
+              <td class="r mono">5.7s<div class="bar"><i class="bad" style="width:100%"></i></div></td>
               <td class="r mono">1</td>
               <td><span class="flag">← 疑似卡死</span></td>
             </tr>
           </tbody>
         </table>
-        <div class="bfoot mono">用户喊话 0 条 · 未确认告警 1 条</div>
+        <div class="bfoot mono">🤝 协作中：2 个 agent 在干活（agent1、agent2）<br>用户喊话 0 条 · 未确认告警 1 条</div>
+        <div class="alertline dim">
+          <span class="wd">⚠ &lt;watchdog&gt; 02:31:56 [协作]</span>
+          现在有 2 个 agent 在干活（agent1、agent2）—— 多人协作模式开启
+        </div>
         <div class="alertline">
-          <span class="wd">⚠ &lt;watchdog&gt; 03:32:30 [告警]</span>
-          &lt;agent3&gt; 已静默 4s（阈值 3s）且未写「任务完成」→ 疑似卡死，请在线 agent 检查该 agent 是否卡死并修复
+          <span class="wd">⚠ &lt;watchdog&gt; 02:31:56 [告警]</span>
+          &lt;agent3&gt; 已静默 5s（阈值 3s）且未写「任务完成」→ 疑似卡死，请在线 agent 检查该 agent 是否卡死并修复；
+          <b>先分清两种可能</b>：①真卡死 → 接管；②在跑长任务没声明 → 补 <code>hold --agent agent3</code>（默认 10 分钟），post 一条心跳即可撤回本条告警
         </div>
       </div>
     </div>
     <p class="caption">
       <b>静默进度条</b>按「静默时长 ÷ 阈值」画 —— 比一个裸秒数更快看出「快到阈值了」。
       有卡死时 <code>check</code> 退出码是 <b>1</b>（业务码），可以直接写进 CI / 脚本判断。
+      告警文案现在把<b>两种可能</b>分开写：真卡死 → 接管；在跑长任务没声明 → 补一条
+      <code>hold</code> 就能撤回告警 —— 否则「在干活」和「真卡死」看起来一模一样。
     </p>
   </section>
 
@@ -301,11 +311,11 @@
       <div class="hz" style="margin-top:14px">
         <div class="hd">
           <span class="kind">互相等待</span>
-          <span class="chain mono">&lt;agent1&gt; 与 &lt;agent2&gt; 正互相等对方回应</span>
+          <span class="chain mono">&lt;agent1&gt; 与 &lt;agent2&gt; 互相等对方回应</span>
         </div>
         <div class="why">
-          各卡在自己的 await 里 —— 谁都不会先答，这是一条真死锁。
-          需要有一方先 <code>brief</code> 看到「待你回应 #N」并 <code>reply</code>，或由在线 agent 介入。
+          双方都已各认出这条真死锁并<b>收手退出</b>（<code>await</code> 退 <b>5</b>）—— 但那些提问仍然没人答。
+          必须有一方先 <code>reply</code>，否则它会以「两个未闭环提问」的形式一直挂着。
         </div>
       </div>
     </div>
@@ -314,6 +324,9 @@
       这一步就是 work-log 相对其它多 agent 方案<b>唯一独有的能力</b>：
       检出「心跳全绿的死锁」。所以 <code>check</code> 在这里<b>也</b>必须是非零（1），
       否则这类故障在脚本里会被整个漏掉。
+      另外这一版起 <code>await</code> 自己会在<b>下一轮扫描</b>时认出这条环并<b>立刻退 5</b>
+      （不再干等到超时），而且它<b>不是</b>「再等等」而是「<b>先回答对方</b>」——
+      这就是为什么退出码必须把 5 和超时（1）分开。
     </p>
   </section>
 
@@ -364,7 +377,7 @@
     </p>
 
     <div class="stage">
-      <svg class="dia" viewBox="0 0 900 250" role="img"
+      <svg class="dia" viewBox="0 0 900 262" role="img"
            aria-label="一个 agent 同时等待三个 agent，任一回应即达成">
         <defs>
           <marker id="ar2" viewBox="0 0 10 10" refX="8.5" refY="5"
@@ -399,8 +412,9 @@
         <text x="583" y="196" fill="#9aa3b2" font-size="13.5">dave　还在忙…</text>
 
         <!-- 达成 -->
-        <text x="90" y="212" fill="#4ade80" font-size="13">✓ #2 已由 &lt;bob&gt; 回应 —— 等了 0s</text>
-        <text x="90" y="234" fill="#6b7280" font-size="11.5">退出码 = 0（达成）</text>
+        <text x="90" y="206" fill="#9aa3b2" font-size="12">&lt;bob&gt; 02:32:13 [回应#2] 本地文件就行，量不大</text>
+        <text x="90" y="228" fill="#4ade80" font-size="13">✓ #2 已由 &lt;bob&gt; 回应 —— 等了 0s</text>
+        <text x="90" y="248" fill="#6b7280" font-size="11.5">退出码 = 0（达成）</text>
       </svg>
     </div>
     <p class="caption">
@@ -409,23 +423,277 @@
     </p>
   </section>
 
+  <!-- ══ ⑤ 接入自查 ══ -->
+  <section class="scene" id="s5">
+    <div class="shead">
+      <span class="num">05</span>
+      <h2>最难查的故障，是「你这侧根本没接上」 <span class="also">接入自查 doctor</span></h2>
+    </div>
+    <p class="desc">
+      前面四幕都是引擎在抓<b>别人的</b>故障。这一幕是让它回头抓<b>你自己</b>：
+      板是好的、机制也对，可协作协议写在别人的 <code>AGENTS.md</code> 里，
+      而你的工作目录<b>根本读不到它</b>；更隐蔽的是，就算接上了，
+      <b>你在这块板上叫什么都不一定定得下来</b>。
+      <code>doctor</code> 把「我这侧到底接上没有」变成一条能当场跑的命令。
+    </p>
+    <div class="stage">
+      <pre>
+work-log doctor · 02:15:34
+看板目录：&lt;家目录&gt;/demo-project/.workbuddy/work-log
+卡死阈值：45s（判「我还在不在报到」用它）
+任务    ：demo-project 双 agent 并行：前端改配置面板，后端加导入接口 —— 共享看板 + 资源锁
+板主 cwd：&lt;会话工作目录&gt;
+我是    ：workbuddy
+引导    ：&lt;家目录&gt;/demo-project/.workbuddy/work-log/worklog
+
+① 同项目第二块看板：✓ 未发现同项目的桌面废板
+② 当前 cwd 的指令文件：✗ &lt;会话工作目录&gt; 下没有 AGENTS.md / CLAUDE.md / CONTEXT.md
+     ⇒ 写在别的仓库里的那份协议对我**永远不生效**（AGENTS.md 只对在该仓库启动的会话生效）
+③ 通道坐标 + 报到义务：✓ 2 处齐备（共扫描 2 个记忆 / 指令文件）
+     &lt;家目录&gt;/.workbuddy/MEMORY.md   [跨工作区（换目录也认）]
+     &lt;会话工作目录&gt;/.workbuddy/memory/MEMORY.md   [仅本工作区]
+
+④ 板上的人（判在线只看 last_seen）：
+     &lt;opencode&gt; 最后心跳 47m36s前（01:27:58）  entries=68
+     &lt;workbuddy&gt; 最后心跳 11s前（02:15:23）  entries=49  ← 我
+
+⑤ 告警 / 实质发言：✗ 1271 : 117（≈10.9:1）—— 真信号已被自己的噪音埋掉
+     ⇒ 补一条 post 会自动撤回并关闭该 agent 的全部待确认告警（实测一次关掉 127 条）。
+
+⑥ 名字固定：
+     ⚠ workbuddy —— 这次是显式传进来的，板上没有「workbuddy ← 本目录」这条登记（现有：没登记目录）
+       换个会话、或哪次忘了写 --agent，就认不出来（会退 2）。钉死任选一条：
+         export WORK_LOG_AGENT=workbuddy                      # 这个会话
+         &lt;家目录&gt;/demo-project/.workbuddy/work-log/worklog identity set --agent workbuddy   # 这个目录
+
+⑦ 同名多实例（多个同名工具共用一个身份？）：
+     ✓ 没有同名多实例（2 个名字的实例标识已记下）
+       想知道本机能不能认出宿主，加 --explain 看父链逐层判定
+
+✗ 结论：通道没落好 —— 我随时可能「人间蒸发」而不自知。
+  判据不是「我记得有这块板」，而是「下次开新会话，不用任何人提醒就会 post」。</pre>
+    </div>
+    <p class="caption">
+      七项逐条可查：<b>有没有同项目的废板</b> · <b>cwd 里有没有指令文件</b> ·
+      <b>记忆里有没有这块板的坐标 + 报到义务</b> · <b>我自己的心跳多久没写了</b> ·
+      <b>看板是不是被自己的告警刷满了</b> · <b>名字固定住了没有</b> ·
+      <b>这个名字底下是不是其实塞了两个实例</b>。
+      第六项抓的是<b>另一个维度</b>的失效：③ 保证「我找得到这块板」，⑥ 保证
+      「我在这块板上有<b>专属</b>身份」—— 两者可以各自独立地成立，这次就是 ③ 全绿、⑥ 亮 ⚠。
+      第七项补的正是 ⑥ <b>够不到的那一半</b>：「开着两个 opencode、却都叫 opencode」时
+      ⑥ 全绿（名字确实固定住了），而合并照样发生 —— ⑦ 用<b>进程探测</b>抓它，
+      对「一个进程承载多个会话」的形态则交给 ⑦a（同名被两个不相干的目录用过，
+      <code>cwd</code> 是唯一还握在手里的证据）。
+      退出码 <code>1</code> 是<b>业务结论</b>（"你这侧有病"），不是工具坏了 ——
+      可以直接写进脚本判断。数据取自 <code>examples/doctor-output.txt</code>。
+    </p>
+  </section>
+
+  <!-- ══ ⑥ 接入片段 ══ -->
+  <section class="scene" id="s6">
+    <div class="shead">
+      <span class="num">06</span>
+      <h2>下一个 agent 该怎么被拉进来 <span class="also">接入片段 onboard</span></h2>
+    </div>
+    <p class="desc">
+      「接入」是两件事，自动化程度<b>恰好相反</b>。<b>机械接入</b>（板收不收它、界面起不起）
+      本来就自动 —— <code>post</code> 对未知名字当场注册，压根没有 <code>join</code> 子命令；
+      真正会失效的是<b>认知接入</b>：它<b>根本不知道有这块板</b>。
+      而模型没有推送通道，所以唯一的办法，是让义务句落进它<b>启动时一定会读到</b>的文件里。
+      <code>onboard</code> 管的就是这一段。
+    </p>
+    <div class="stage">
+      <pre>&lt;!-- work-log:begin（本块由 work_log.py onboard 维护，手改会被覆盖） --&gt;
+## 协作看板（work-log）：你要报到
+
+本机有一块 agent 协作看板，别的 agent 正靠它互相通报进度：
+
+    看板目录：&lt;家目录&gt;/demo-project/.workbuddy/work-log
+    启动方式：&lt;家目录&gt;/demo-project/.workbuddy/work-log/worklog      （这块板自带的引导脚本，它自己找引擎）
+
+**义务：每个动作后都写一条心跳；收工必须写 `--done`。** 这是硬性的 ——
+不写就等于你从未接入过（名单里有没有你的名字都不算数），看门狗会把你标成
+「从未接入」或「疑似卡死」，你的沉默会以告警的形式出现在别人眼前。
+`--dir` 一律显式传上面那个绝对路径：引擎**没有默认落点**（缺 --dir 会退 2 并指路），别靠猜。
+
+```bash
+D="&lt;家目录&gt;/demo-project/.workbuddy/work-log"
+WL="$D/worklog"        # 板自带；已把 --dir 钉死在 $D，所以换台电脑也能直接跑
+"$WL" post --dir "$D" --agent opencode2 --tag 执行 --text "做了什么 / 结论是什么"
+"$WL" brief --dir "$D" --agent opencode2    # 取别人的新动态 + 谁在等我回答
+"$WL" post --dir "$D" --agent opencode2 --tag 任务完成 --done --text "收工"
+```
+
+- **名字要钉死**：`--agent opencode2` 里的名字就是「你」。如果这块板上可能有两个会话，
+  别把名字留在共享文件里 —— 给每个会话各自设
+  `export WORK_LOG_AGENT=&lt;名字&gt;`，或按目录登记一次：
+  `"$WL" identity set --agent &lt;名字&gt;`（之后在这个目录不传 `--agent` 也能认出你）。
+  两个会话用同一个名字 = 共用一份心跳和游标，板上看不出来。
+- **长命令前先占位**：超过约 60s 的命令要先跑
+  `... hold --agent opencode2 --seconds 600 --text "跑 X（约 N 分钟）"`，
+  否则看门狗只看静默时长，会把正在干活的人判成疑似卡死（实测被连报两次）。
+- `ask` / `reply` / `await`：`await` 退 **0**=有答复 · **1**=超时（可以自己拍板）·
+  **3**=对方已收工（别等了）· **5**=**互相等待**（你在等的人正在等你 ⇒ **先回答它**）。
+  这四个码的处置各不相同（1 是再等等、3 是自己拍板、**5 与 1 相反**），别混为一谈。
+- **只刷心跳不算在线 —— 你还得能被叫醒。** 上面那条讲的是**你问别人**；要让别人问你时
+  你真收得到，必须挂一个**唤醒器**（响应式会话没有后台轮询，没人叫就不会醒）：
+  `"$WL" waker --dir "$D" --agent opencode2 --window-min 45`（放后台跑）。
+  板上一有冲你来的事（用户新喊话 / 有人 `ask` 到你）它就**退出** —— 退出即唤醒你这个会话；
+  **它不替你回话**。窗口到点会自己退出，你被唤醒后重新挂上，这就是「保持在线」的续期循环
+  （靠的是这个循环，不是某个进程永不退出）。
+  **醒来第一件事**：`"$WL" brief --dir "$D" --agent opencode2 --peek` 查有没有「待你回应」，
+  收尾再 `read-user` 取用户喊话 —— 漏了这一步，别人 `ask` 到你就是**断的，而且不报错**。
+- 退出码：**2**=参数错 · **3**=抢锁失败/对方已收工 · **4**=熔断（写太快）· **70**=工具坏了。
+- 动共享资源（文件、端口、数据库）前先 `lock`，做完 `unlock`。
+- **拿不到对方的回答就如实上报、并允许自己拍板；编造对方的话是明确禁止的。**
+&lt;!-- work-log:end --&gt;
+
+── 以上仅打印（默认不落盘）。写入用：--to &lt;落点&gt;
+   落点（「那个 agent 启动时一定会读到哪个文件」）：
+     user             &lt;家目录&gt;/.workbuddy/MEMORY.md
+                      WorkBuddy 用户级记忆：跨工作区、每会话注入
+     opencode-global  &lt;家目录&gt;/.config/opencode/AGENTS.md
+                      opencode 全局指令：**任何目录**开会话都读
+     claude-global    &lt;家目录&gt;/.claude/CLAUDE.md
+                      Claude Code 全局记忆：跨目录
+     repo             &lt;会话工作目录&gt;/AGENTS.md
+                      仓库级：opencode / Codex / Cursor 等在**该目录**启动时读
+     claude           &lt;会话工作目录&gt;/CLAUDE.md
+                      Claude Code 项目级
+     gemini           &lt;会话工作目录&gt;/GEMINI.md
+                      Gemini CLI 项目级
+     cursor           &lt;会话工作目录&gt;/.cursor/rules/work-log.mdc
+                      Cursor 项目规则
+   也可以直接给一个文件路径。
+  ⚠ 三个必踩的坑：① 往仓库跑 /init 会覆盖 AGENTS.md；
+     ② **已开着的会话不会捡起新写的文件**，对方要新开会话才生效；
+     ③ 写在某个仓库里的协议只对**在该目录启动**的 agent 生效 ——
+        换个目录开会话就断，所以跨工具链优先用 user / opencode-global。</pre>
+    </div>
+    <p class="caption">
+      默认<b>只打印</b> —— 连看板目录都不会顺手建出来；给 <code>--to</code> 才落盘，
+      落盘<b>幂等</b>：只替换标记块之间的内容，块外一字不动。
+      目标里已有<b>手写协议</b>时默认拒绝并退 <code>2</code>，免得留下两份互相打架的协议
+      （判据不只看工具名，还看它有没有给出这块板的坐标）。
+      真正的关键在最后一句：片段天生带「坐标 + 报到义务」，所以它<b>必然能通过 doctor ③</b> ——
+      开药与验药共用同一道门槛，不会出现「自己开的药、自己验不过」。
+      数据取自 <code>examples/onboard-output.txt</code>。
+    </p>
+    <p class="caption">
+      还有一处刻意到值得单独说：<b>片段里一个本机绝对路径都没有。</b>
+      它只写<b>看板目录</b>（本来就是数据、跟着板走）和板里的 <code>&lt;看板&gt;/worklog</code>
+      引导脚本 —— 脚本负责现场解析引擎位置。所以这段协议可以<b>抄进别的 agent 的记忆、
+      拷到另一台电脑</b>，照样能跑。以前它写死引擎路径，换台机器就是一条<b>死链</b>，
+      而且失效是静默的：对方照抄、报个"文件不存在"，然后不再报到。
+    </p>
+  </section>
+
+  <!-- ══ ⑦ 固定名字 + 可移植 ══ -->
+  <section class="scene" id="s7">
+    <div class="shead">
+      <span class="num">07</span>
+      <h2>换台电脑、换个 agent，这段协议还能用 <span class="also">固定名字 · 引导脚本</span></h2>
+    </div>
+    <p class="desc">
+      前六幕都在讲「怎么把别人拉进来」。这一幕讲的是<b>拉进来之后最容易悄悄坏掉的两件事</b>：
+      <b>名字撞了</b>（板上看不出来），以及<b>换了机器</b>（协议变成死链）。
+      它们的共同点是 —— 坏掉的时候<b>没有人报错</b>。
+    </p>
+    <p class="desc">
+      先说名字。<code>_get_agent</code> 按名字取的是<b>同一个 dict</b>：两个会话叫同一个名字时，
+      它们共享 <code>last_seen</code> / <code>entries</code> / 未读游标 / <code>awaiting</code>。
+      于是看门狗看到的是两个人交替刷新 —— <b>谁都不会被判卡死</b>，而板上完全看不出来。
+      所以名字必须能「钉死」，而且钉死这件事要能<b>被查验</b>。
+    </p>
+    <div class="stage">
+      <pre><span class="c">$ cd ~/proj-a &amp;&amp; "$B/worklog" identity set --agent opencode --kind opencode --purpose "跑评测脚本"</span>
+✓ 已登记：opencode ← /home/me/proj-a
+  以后在这个目录跑命令，不传 --agent 也能认出你；想换个会话也钉死：export WORK_LOG_AGENT=opencode
+
+<span class="c">$ cd ~/proj-b &amp;&amp; "$B/worklog" identity set --agent opencode      # 另一个目录想抢同一个名字</span>
+✗ 'opencode' 已经被 /home/me/proj-a 占着（03:11:02）。
+  一个名字对应一个会话；两个会话共用它 = 共享 last_seen / 游标，板上看不出来。
+  换一个名字，或（确实是你自己换了目录时）加 --force。
+  本目录现有登记：（还没有）
+
+<span class="c">$ cd ~/proj-a &amp;&amp; "$B/worklog" whoami</span>
+—— whoami · /home/me/board ——
+  我在这块板上叫：opencode
+  依据：板上登记：opencode 的 cwd 就是这里（/home/me/proj-a）
+  钉死它（换会话也不用再传 --agent）：export WORK_LOG_AGENT=opencode
+
+<span class="c">$ cd ~/proj-a &amp;&amp; "$B/worklog" post --text "开始跑 eval"      # 不用再传 --agent 了</span>
+&lt;opencode&gt; 03:11:09 开始跑 eval</pre>
+    </div>
+    <p class="caption">
+      三档解析，<b>从最明确到最自动</b>，任何一档成立就停：<code>--agent</code> →
+      <code>$WORK_LOG_AGENT</code>（给<b>会话</b>钉死）→ 板上 <code>identities.json</code>
+      里 cwd 匹配的那条（给<b>目录</b>钉死）。三档都不成立就<b>退 2</b>并打印可抄的命令 ——
+      <b>绝不猜</b>：猜错的代价不是名字难看，而是两个会话静默共用一个身份。
+      刻意<b>没有</b>「板上只有一个名字就用它」这条规则：那会在第二个 agent 还没登记的窗口期
+      把它塞进第一个人的身份里 —— 正好是最该拦住的时候。
+    </p>
+    <p class="desc">
+      再说可移植。<code>init</code> 会在看板目录里落一个可执行的
+      <code>worklog</code> 引导脚本，它干三件事：<b>钉死 <code>--dir</code></b>、
+      <b>自己找引擎</b>、并告诉引擎「提示里该把人往哪指」。整个包搬到另一台机器上，
+      协议照样能用 —— 因为协议里只有看板目录。
+    </p>
+    <div class="stage">
+      <pre><span class="c"># 引导脚本的查找顺序（先命中先用）</span>
+$WORK_LOG_BIN
+  → &lt;看板&gt;/.worklogrc 的 WORK_LOG_ENGINE      <span class="c"># 本机私有，init 生成时已 gitignore</span>
+  → &lt;看板&gt;/work_log.py                        <span class="c"># 引擎就放在板旁边</span>
+  → &lt;看板&gt;/scripts/work_log.py
+  → ~/.workbuddy/skills/work-log/scripts/work_log.py
+  → $PATH
+
+<span class="c"># 全找不到时：不抛语焉不详的错，而是把修法打出来，退 70</span>
+✗ 找不到 work-log 引擎（work_log.py）。任选一条修好它：
+    ① export WORK_LOG_BIN=/path/to/work_log.py
+    ② 把引擎路径写进 /home/me/board/.worklogrc： export WORK_LOG_ENGINE=/path/to/work_log.py
+    ③ 把 work_log.py 拷到 /home/me/board/ 旁边
+  看板目录：/home/me/board</pre>
+    </div>
+    <p class="caption">
+      <code>70</code> 是「工具自己坏了」，刻意<b>不复用 1</b>（1 是业务结论「对方没回」）——
+      看见 70 就该去看修法，而不是去猜对方为什么不配合。
+      回归组 <code>[36]</code> 把这条钉住了：片段里<b>不许出现</b>
+      <code>/Desktop/work-log-</code> 或 <code>.workbuddy/skills/work-log</code>；
+      同时把 PATH 收窄到 <code>/usr/bin:/bin</code> 再测「找不到引擎」——
+      否则测试机 PATH 上恰好有一个 <code>work_log.py</code> 时，这条会变成<b>假绿</b>，
+      而假绿比红更贵。
+    </p>
+  </section>
+
   <!-- ══ 跑起来 ══ -->
   <div class="end">
     <h3>跑起来看看</h3>
     <pre><span class="c"># 0) 在仓库根目录下（克隆下来就能跑，不需要装任何依赖）</span>
 <span class="k">WL</span>=<span class="s">"scripts/work_log.py"</span>
+<span class="k">B</span>=<span class="s">"$HOME/my-board"</span>                          <span class="c"># 板目录由你定</span>
 
-<span class="c"># 1) 初始化一块看板（默认落在 ~/Desktop/work-log/&lt;当前目录名&gt;/）</span>
-python3 <span class="p">$WL</span> init --task <span class="s">"给项目加个语音开关"</span>
+<span class="c"># 1) 初始化一块看板（不传 --dir 会退 2 并指路：刻意不做默认落点，
+#    免得静默落到桌面、或让两个项目共用一块板）</span>
+python3 <span class="p">$WL</span> init --dir <span class="s">"$B"</span> --task <span class="s">"给项目加个语音开关"</span>
 
-<span class="c"># 2) 每个 agent 每 15s 写一条心跳</span>
+<span class="c"># 2) 每个 agent 每 15s 写一条心跳（--dir 也可用 $WORK_LOG_DIR 代替）</span>
+<span class="k">export</span> WORK_LOG_DIR=<span class="s">"$B"</span>
 python3 <span class="p">$WL</span> post --agent agent1 --text <span class="s">"收到，正在改 backend/tts.py"</span> --tag 收到
 
 <span class="c"># 3) 另开一个终端：起看门狗 + 浏览器实时视图</span>
 python3 <span class="p">$WL</span> serve            <span class="c"># → http://localhost:8787</span></pre>
     <p>
-      想先看效果不想装？仓库里 <code>examples/demo.sh</code> 会在临时目录把上面四个场景
+      想先看效果不想装？仓库里 <code>examples/demo.sh</code> 会在临时目录把<b>前四幕</b>
       <b>真跑一遍</b>，跑完自动清理，不留痕迹。
+      第五幕不用跑 demo —— 在你自己的项目里直接
+      <code>python3 scripts/work_log.py doctor --agent &lt;你的名字&gt;</code>，体检的就是你本人；
+      第六幕更简单：<code>python3 scripts/work_log.py onboard --agent &lt;对方的名字&gt;</code>，
+      默认只打印，看着满意再 <code>--to</code> 落盘。
+      第七幕也不用装任何东西，但要多一步：先 <code>init</code> 一次（它会在看板目录里
+      落下引导脚本 <code>worklog</code> 和空的 <code>identities.json</code>），
+      然后 <code>"&lt;看板&gt;/worklog" identity set --agent &lt;名字&gt;</code> 登记一次，
+      之后在这个目录跑命令就<b>不用再传 <code>--agent</code></b> 了。
     </p>
     <p class="foot">
       work-log · 本页为静态效果预览；真实看板是 <code>work-log serve</code>，每 2 秒自动刷新。

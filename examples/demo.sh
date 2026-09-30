@@ -14,10 +14,19 @@
 
 set -uo pipefail
 
+# 演示脚本**不许在别人机器上留东西**（2026-09-30 修）。
+# 本演示有 3 个 agent 同时写心跳，会触发 `post` 的自动协作界面（auto_ui），后果三件：
+#   ① 弹一个浏览器窗口；② 留下一只**脱离父进程**的 serve，指着本脚本随后 `rm -rf`
+#   掉的临时板；③ 占住 8788 起的端口。实测本机就积了 2 只这样的孤儿（占 8789/8790）。
+# 演示里本来就没有 UI 那一幕，直接关掉 —— 一个"不需要 key、不碰你的文件"的演示，
+# 更不该在你桌面上开窗、在后台留进程。
+export WORK_LOG_NO_AUTO_UI=1
+export WORK_LOG_NO_UI=1          # 双保险：任何路径都不许弹浏览器
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WL="$HERE/../scripts/work_log.py"
 PY="${PYTHON:-python3}"
-TMP="$(mktemp -d "${TMPDIR:-/tmp}""/work-demo.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}""/worke-demo.XXXXXX")"
 BG=""
 cleanup() {
   for p in $BG; do kill "$p" 2>/dev/null; done
@@ -122,7 +131,7 @@ say "   bob 回了一条，然后用 --any 等："
 run "$D" reply --agent bob --id 2 --text "本地文件就行，量不大" >/dev/null
 run "$D" await --agent asker --id 1,2 --any --timeout 5 --interval 0.2
 echo
-dim "   退出码 = $?（0 = 达成）。--any 拿到一条就返回，不会为了等齐所有人干耗。"
+dim "   退出码 = ${?}（0 = 达成）。--any 拿到一条就返回，不会为了等齐所有人干耗。"
 
 echo
 hr

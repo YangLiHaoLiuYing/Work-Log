@@ -4,7 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%20%7C%203.13-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![Zero deps](https://img.shields.io/badge/dependencies-0-2ea44f)](#requirements)
-[![Assertions](https://img.shields.io/badge/assertions-394%20passing-2ea44f)](docs/VALIDATION.md)
+[![Assertions](https://img.shields.io/badge/assertions-698%20passing-2ea44f)](docs/VALIDATION.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![English](https://img.shields.io/badge/docs-English-1f6feb)](#quick-start) [![中文](https://img.shields.io/badge/docs-中文-6e7781)](README.md)
 
@@ -17,15 +17,22 @@ Standard library only, no third-party dependencies, no network, no changes to yo
 
 ---
 
-## Three failure modes it catches
+## Four failure modes it catches
 
 | Failure mode | What it looks like | How work-log catches it |
 |---|---|---|
 | **Silent stall** | The agent process is alive but hasn't moved in 10 minutes. You only find out by asking. | Scans the board every 15s. Silent past the threshold **and** without writing "task done" → flagged, alert written for a live agent to take over. |
+| **A dropped task nobody notices** | A asked B a question and B never answered — while **both heartbeats stay green**. The wait graph can't see it either: A may never have been in `await` at all, it just forgot. | **The second axis (work axis)**: it watches "is there a question sitting open with nobody answering". Past a threshold it reports `[incident]` and makes `check` exit `1`; if the peer has already finished it reports `[close it out]` instead (not an incident — just a nudge for the asker). |
 | **The all-green deadlock** | Two agents asked each other questions and are now **both waiting for the other's answer**. Both heartbeats are green (waiting auto-refreshes liveness), so a watchdog sees nothing — but the team is already dead. | **Wait graph**: `await` records the waiting edge into shared state, which lets it distinguish `[unreachable wait]` (peer already finished — the answer will never come) from `[mutual wait]` (a real deadlock). |
 | **Budget burned on politeness** | Two agents ping-pong "ok", "got it", "sounds good" a dozen times; or one agent loops and spams heartbeats. | **Communication breaker**: warns at 6 consecutive alternating rounds, hard-refuses at 12. Heartbeat budget of 60/min — over budget is refused **and does not refresh liveness**, so the same agent also gets flagged as spinning. |
 
-> The third one is especially nasty: **on the board these look like the two healthiest agents** —
+> The second one is this project's most expensive lesson: after the heartbeat watchdog shipped,
+> it produced **33 false alarms and 0 real incidents** — while the one genuine incident
+> (a question silently dropped for 547 seconds) raised nothing at all. Tuning the threshold
+> can't fix that, because the observation axis was wrong: a heartbeat answers "is it still
+> there?", not "is the work still there?". So there are two axes now, each covering half.
+
+> The fourth one is especially nasty: **on the board these look like the two healthiest agents** —
 > one is chatting the most, the other is posting the most. In reality one is burning tokens
 > and the other is burning a loop.
 
@@ -36,7 +43,7 @@ Seven acts, all **real output** (the first four from `examples/demo-output.txt`,
 
 > watchdog catches a silent stall · wait graph catches the "all-green deadlock" ·
 > circuit breaker stops the ping-pong · multi-way `await` resolves on the first reply ·
-> **onboarding self-check `doctor`** · **wiring snippet `onboard`** · **pinning an agent's name + still working on another machine**
+> **onboarding self-check `doctor`** · **wiring snippet `onboard`** (including "how to be asked" — teaching only `ask` is one-way) · **pinning an agent's name + still working on another machine**
 
 (GitHub does not render HTML files — clone the repo and open it in a browser,
 or serve it via GitHub Pages yourself.)
@@ -46,11 +53,9 @@ or serve it via GitHub Pages yourself.)
 No API key, no model, no files left in your project:
 
 ```bash
-git clone https://github.com/YangLiHaoLiuYing/Work-Log.git /tmp/work-log
+git clone https://github.com/YangLiHaoLiuYing/work-log.git /tmp/work-log
 bash /tmp/work-log/examples/demo.sh
 ```
-
-(Already have the code locally? Skip the clone and just run `bash examples/demo.sh`. Takes ~20s.)
 
 The demo reproduces all three failure modes with real CLI output (watchdog catches a stall →
 wait graph catches a deadlock → breaker stops the ping-pong → multi-way `await`).
@@ -61,23 +66,21 @@ Full captured output: [`examples/demo-output.txt`](examples/demo-output.txt).
 ```bash
 WL="$PWD/scripts/work_log.py"
 
-# 1) Create a board (defaults to ~/Desktop/work-log/<cwd-name>/ — one board per project)
-python3 "$WL" init --task "Add a voice toggle, touching 3 files" --agents agent1,agent2
+# 0) The board directory is required: no default location (missing --dir exits 2 with guidance)
+D="$PWD/.workbuddy/work-log"
+
+# 1) Create a board (declare the stall threshold once; every watchdog obeys it)
+python3 "$WL" --dir "$D" init --task "Add a voice toggle, touching 3 files" --agents agent1,agent2 --stale-after 90
 
 # 2) In another terminal: run the watchdog (scans every 15s, alerts on stalls)
-python3 "$WL" watch &
+python3 "$WL" --dir "$D" watch &
 
-# 3) In another terminal: live browser view (default http://localhost:8787; `--port` to change)
-python3 "$WL" serve
+# 3) In another terminal: live browser view — watch them talk
+python3 "$WL" --dir "$D" serve
 
 # 4) Each agent writes a heartbeat every ≤15s
-python3 "$WL" post --agent agent1 --text "Got the request: adding a voice toggle. Editing tts.py now." --tag 收到
+python3 "$WL" --dir "$D" post --agent agent1 --text "Got the request: adding a voice toggle. Editing tts.py now." --tag 收到
 ```
-
-> **The address is whatever `serve` prints** — `http://localhost:<port>/`, default **8787**.
-> A common gotcha: `init --no-auto-ui` disables "second agent starts → auto-launch `serve` + open the
-> browser", and there is **no reverse flag** (you have to flip `auto_ui` in the board's `state.json`).
-> With it, the UI will **not** appear on its own — run `serve` yourself. `init` prints the board directory.
 
 Loop template for each agent (put it in its system prompt):
 
@@ -125,7 +128,7 @@ Callers (shell scripts, CI, agent drivers) draw **business conclusions** from ex
 | `0` | Success / everyone healthy | — |
 | `1` | `check` found a stall **or a coordination hazard**; `await` timed out | **business** |
 | `2` | Usage / precondition error (bad id, empty text, asking yourself, `--id 0`, …) | usage |
-| `3` | Peer already finished / lock conflict | **business** |
+| `3` | **Already handled by someone else**: peer finished / resource taken / shout-out claimed | **business** |
 | `4` | Refused by the communication breaker or heartbeat budget | **business** |
 | `70` | The tool itself is broken (a software bug) | infrastructure |
 
@@ -133,37 +136,6 @@ Callers (shell scripts, CI, agent drivers) draw **business conclusions** from ex
 Otherwise "I got the id wrong" and "the peer refused to cooperate" look identical to the caller,
 and a tool usage bug gets read as a business fact. We actually shipped that bug once —
 see [docs/DESIGN.md](docs/DESIGN.md) (Chinese).
-
-## Command reference
-
-24 subcommands, grouped by purpose:
-
-| Group | Commands |
-|---|---|
-| Heartbeat | `init` `post` `hold` `release` `tail` |
-| Direct Q&A | `ask` `reply` `await` `brief` `ack-user` `read-user` |
-| Supervision | `check` `status` `watch` `ack` |
-| Identity | `identity` (**name registry**: who is called what on this board, and from which directory — claiming another directory's name is **refused**) `whoami` (**what am I called here, and which rule decided that**) |
-| Onboarding | `onboard` (**hand the wiring snippet to a second agent** — prints only by default; `--to user\|opencode-global\|repo\|…` writes it, idempotently, and refuses to clobber a hand-written protocol; `--detect` **probes which toolchains are installed**, `--to auto` writes every cross-directory target it finds, exiting `1` when it finds none) `doctor` (**is my own side actually wired up?** — six checks: instruction files in cwd · this board's path *and* the duty to report in memory · am I still posting · **is my name pinned** · are alerts burying the real signal) |
-| Resource locks | `lock` `unlock` `locks` |
-| For humans | `serve` (live browser view, with a collaboration badge) `say` (shout to everyone) |
-
-**Collaboration is the activation condition**: with ≥2 agents working, the board lights up
-(visible in `status`, on the `serve` page, and as a board event). **You can join the conversation**:
-an agent runs `ask --to 用户`, you answer with `reply --agent 用户 --id N`, and its `await` receives it.
-
-**`--agent` is optional**: it resolves from `$WORK_LOG_AGENT` (pins one *session*), then from
-`identities.json` on the board matching your cwd (pins one *directory*). If neither applies it exits
-**2** and prints the exact command to run — it never guesses, because a wrong guess lets two sessions
-silently share one identity (their heartbeats, cursors and `awaiting` all merge, and the board
-shows nothing wrong).
-
-**The wiring snippet contains no absolute path to the engine.** `init` drops an executable `worklog`
-launcher into the board directory that pins `--dir` and **finds the engine itself** — so the whole
-bundle still works on another machine, or with a different agent.
-
-Full parameters: `python3 scripts/work_log.py --help`. Protocol details:
-[`references/protocol.md`](references/protocol.md).
 
 ## Requirements
 
@@ -180,7 +152,7 @@ Not "written and shipped" — actually run:
 - **Multi-agent collaboration sensing**: the board lights up a "collaboration" marker the moment a
   second agent starts working (visible in `status`, the browser view, and as a board event) —
   this is the tool's activation condition.
-- **394 assertions across 39 test groups, 0 failures** — green on both Python 3.9.6 and 3.13.12
+- **698 assertions across 61 test groups, 0 failures** — green on both Python 3.9.6 and 3.13.12
 - **Real-model validation**: drove 2 agents through the full protocol for 3 rounds against a live
   OpenAI-compatible endpoint. Every exchange closed, decisions quoted the peer's actual wording,
   a user request conflicting with an already-agreed decision went through "block + negotiate + explicit
@@ -220,23 +192,31 @@ making progress.** It layers on top of any framework.
 
 ```bash
 # A. As a Skill (WorkBuddy / Claude Code — anything that reads SKILL.md)
-git clone https://github.com/YangLiHaoLiuYing/Work-Log.git ~/.workbuddy/skills/work-log
+git clone https://github.com/YangLiHaoLiuYing/work-log.git ~/.workbuddy/skills/work-log
 
-# B. CLI only (the trailing `work-log` is an explicit target dir — see the note in README.md)
-git clone https://github.com/YangLiHaoLiuYing/Work-Log.git work-log && python3 work-log/scripts/work_log.py --help
+# B. CLI only
+git clone https://github.com/YangLiHaoLiuYing/work-log.git && python3 work-log/scripts/work_log.py --help
 ```
 
 ## Repository layout
 
 ```
 work-log/
-├── SKILL.md                 agent-facing manual (triggers / command table / pitfalls)
+├── SKILL.md                 agent-facing manual (triggers / criteria / common commands)
 ├── scripts/
-│   ├── work_log.py         engine: single file, zero deps, 24 subcommands
+│   ├── work_log.py         engine: single file, zero deps, 28 subcommands
 │   ├── llm_agent.py         drive a real model as an agent via any OpenAI-compatible endpoint
-│   └── selftest.sh          394-assertion regression suite
-│   └── check_stdlib_only.py blocks accidental third-party deps (runs in CI)
-├── references/protocol.md   spec: state machine, exit codes, board grammar, trade-offs
+│   ├── waker.sh             external waker: make a reactive session actually wake up (wake-only)
+│   ├── ask_listener.sh      turn "someone asked me" into an auto-answerable event (for resident bots)
+│   └── selftest.sh          698-assertion regression suite (61 groups)
+├── references/
+│   ├── protocol.md          spec: state machine, exit codes, board grammar, trade-offs
+│   ├── usage.md             long-form usage guide (the evidence layer behind SKILL.md)
+│   ├── cli.md               every subcommand and option
+│   ├── identity.md          "looks like a host" criteria, same-name multi-instance detection
+│   ├── verification.md      real-model acceptance, driver-layer pitfalls
+│   ├── integration.md       onboarding another toolchain + self-check
+│   └── pitfalls.md          pitfalls with the full story
 ├── assets/viewer.html       live view page (served by `serve`)
 ├── examples/
 │   ├── demo.sh              60-second demo (no key, leaves no files)
@@ -246,29 +226,14 @@ work-log/
 └── docs/                    design, validation, publishing notes + visual preview (mostly Chinese)
 ```
 
+> `SKILL.md` is the **criteria layer**; `references/` is the **evidence layer**
+> (measurements, step-by-step procedures, war stories) — read it when the summary isn't enough.
+
 ## Development
 
 ```bash
-bash scripts/selftest.sh   # measured 1m34s on an M1; runs only in a temp dir, never touches your project
+bash scripts/selftest.sh   # ~3 min, runs only in a temp dir, never touches your project
 ```
-
-Note for `.sh` edits: `bash -n` only checks syntax. A `$var` immediately followed by a non-ASCII
-character (e.g. `echo "exit code $rc（business）"`) makes macOS's bundled **bash 3.2** swallow the
-punctuation's first byte into the variable name and abort with `rc?: unbound variable` — and
-`bash -n` considers it perfectly legal. Always actually run the script
-(`bash examples/demo.sh`); CI has a static guard for this pattern too.
-
-## Documentation
-
-| Doc | What's in it |
-|---|---|
-| [`docs/DESIGN.md`](docs/DESIGN.md) | Design decisions, deliberate non-goals, war stories (Chinese) |
-| [`docs/VALIDATION.md`](docs/VALIDATION.md) | Validation: 394 assertions + 3 real-model rounds + performance + how to reproduce (Chinese) |
-| [`docs/preview.html`](docs/preview.html) | **Visual preview**: six acts of real output as diagrams (single file, offline) |
-| [`docs/PUBLISH.md`](docs/PUBLISH.md) | Publishing manual: step by step to GitHub / Gitee (Chinese) |
-| [`docs/LAUNCH.md`](docs/LAUNCH.md) | Launch copy: repo blurb, topics, per-platform posts (Chinese) |
-| [`references/protocol.md`](references/protocol.md) | Protocol spec: state machine, board grammar, exit-code contract (Chinese) |
-| [`SKILL.md`](SKILL.md) | The agent-facing manual (Chinese) |
 
 ## License
 
