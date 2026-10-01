@@ -854,7 +854,7 @@ prune [--days 7] [--keep-alerts-md 200] [--apply] [--json]
 
 ## 验收自测
 
-`bash scripts/selftest.sh` —— 61 组 698 条断言，覆盖：并发写不丢行、告警冷却与升级、
+`bash scripts/selftest.sh` —— 63 组 734 条断言，覆盖：并发写不丢行、告警冷却与升级、
 恢复自动闭环、待启动保护、探针 brief 增量语义、**定向问答 ask/reply/await/ack-user**、
 **await 超时不得误报成功**、**协作险情（不可达等待 / 互相等待死锁 / 通信过热）**、
 **通信熔断（乒乓阈值边界 + `--force` + 心跳预算）**、**多路 await（`--any` / 混合已答已收工 / 坏编号）**、

@@ -57,6 +57,9 @@ ALERT_BACKOFF_BASE = 135    # 退避基数（秒）。刻意**不**引用 cooldo
                             # cooldown 调成 0，就等于把退避也一起关掉了
 ALERT_BACKOFF_FACTOR = 2    # 每次退避的倍数：135 → 270 → 540 → 1080 → …
 ALERT_BACKOFF_CAP = 3600    # 退避上限（秒）：最坏情况 1 小时提醒一次，不会彻底静音
+# 险情轴 / 办事轴额外要一个 60s 地板（心跳轴没有这个地板）：
+# 这两根轴的 key 比"人"多得多 —— 每个提问、每对死锁各一个 —— 沿用它们原有的取值。
+HAZARD_MIN_GAP = 60
 
 # ---- 「离线」档（★ 判据只能有一处，三处共用 agent_offline()）----------------
 # 静默到小时量级 ⇒ 它多半不是"卡在某一步"，而是人已经不在了。两者处置动作**相反**：
@@ -1058,9 +1061,31 @@ def unacked(st: dict) -> list:
 
 
 def prune_alerts(st: dict) -> None:
+    """裁告警台账，但**未确认的优先保留** —— 先裁已确认的。
+
+    2026-10-01 实测的病：原来是 `st["alerts"] = al[-MAX_ALERTS:]` —— 无条件砍掉
+    窗口外的一切。真板上 `alert_seq` 已发到 3145 而台账只留得下 200 ⇒ 约 2945 条被裁，
+    **裁的时候解没解，事后无从查证**。而 `prune_state` 的注释白纸黑字写着
+    「只裁"已闭环"的记录 …… 丢了它就等于丢了一个还在等回应的人」——
+    `exchanges` 照着这条实现了（显式保全部 open），alerts 没有照。
+    同一个函数里两段代码原则相反，错的必然是不带理由的那一段。
+
+    台账总量仍然封顶在 MAX_ALERTS（不会无限长）；区别只在于**先裁谁**。
+    极端情况（未确认本身就超过上限）下仍会裁掉最老的未确认 —— 那时至少已确认的
+    已经先被裁光了，而"未确认"这条我们确实没有让它无声消失的办法。
+
+    保留原有先后顺序（不重排）：看板是给人读时间线的。
+    """
     al = st.get("alerts", [])
-    if len(al) > MAX_ALERTS:
-        st["alerts"] = al[-MAX_ALERTS:]
+    if len(al) <= MAX_ALERTS:
+        return
+    un_idx = [i for i, a in enumerate(al) if not a.get("acked_by")]
+    if len(un_idx) >= MAX_ALERTS:
+        st["alerts"] = [al[i] for i in un_idx[-MAX_ALERTS:]]
+        return
+    room = MAX_ALERTS - len(un_idx)
+    acked_idx = [i for i, a in enumerate(al) if a.get("acked_by")][-room:]
+    st["alerts"] = [al[i] for i in sorted(set(un_idx) | set(acked_idx))]
 
 
 def prune_state(st: dict) -> None:
@@ -1415,6 +1440,43 @@ def fmt_dur(secs: float) -> str:
     return f"{s}s"
 
 
+def alert_gap(repeat: int, cooldown: float, floor: float = 0.0) -> float:
+    """第 `repeat` 次**连续重复**告警要间隔多久。三根轴共用这一处判据。
+
+    为什么必须收成一处（2026-10-01 实测）：退避最早只长在心跳轴上，注释里那条理由也
+    早就写明了 ——「只看 alert_open 就永远按 COOLDOWN 重复，噪音会反过来把真信号埋掉」
+    （当时某板 42 小时攒出 994 行 watchdog vs 110 行实质发言）。
+    但后加的**险情轴**（不可达等待 / 互相等待）与**办事轴**（提问没人办）各自用了
+    恒定的 `max(cooldown, 60)`：于是一个**永久开着**的提问每 135s 报一次、永远报下去。
+    真板上实测：7 个僵尸提问在最近 200 条台账里占了 170 条（85%），`alert_seq` 已发到
+    3145 而台账只留得下 200 ⇒ 约 2945 条被挤出窗口，窗口外的信号就永久丢了。
+    ⇒ 「记住结论」没能变成「长在同一条轴上」，所以把它收成唯一一处。
+
+    `floor` 给险情轴 / 办事轴用（它们原有 60s 地板，见 HAZARD_MIN_GAP）；
+    心跳轴不传，保持它原来的 `max(退避, cooldown)`。
+    """
+    gap = (cooldown if repeat < ALERT_BACKOFF_AFTER else
+           min(ALERT_BACKOFF_BASE * ALERT_BACKOFF_FACTOR ** (repeat - ALERT_BACKOFF_AFTER + 1),
+               ALERT_BACKOFF_CAP))
+    return max(gap, cooldown, floor)
+
+
+def _seen_last(v) -> float:
+    """读 `hazard_seen` / `open_seen` 里记的那个时刻（拿不准就当没记过）。
+
+    这两个表的值**故意保持裸时间戳**（float），不换成 `{"last":…, "n":…}`：
+    同一块板上可能**同时跑着新旧两个版本**的进程 —— `serve` 的 `watchdog_loop` 是长驻的，
+    升级引擎后它不会自己重启（真板实测连续跑过 1 天以上），而旧版的读法是
+    `float(hseen[key])`。值一旦变成 dict，**旧进程下一轮就抛 TypeError**，
+    看门狗从此静默 —— 而"板子不再报警"这件事没有任何人会立刻发现。
+    所以"报过几次"另存一张表（`hazard_repeat` / `open_repeat`），两张表同生共死。
+    """
+    try:
+        return float(v or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def emit(d: Path, st: dict, res: dict, cooldown: float = COOLDOWN) -> list:
     """写告警 / 恢复通知 / 协作状态切换事件。返回本次新写入的告警行。"""
     written = []
@@ -1439,14 +1501,9 @@ def emit(d: Path, st: dict, res: dict, cooldown: float = COOLDOWN) -> list:
     for name in res["stale"]:
         ag = st["agents"][name]
         # 退避按「连续重复了几次」算，而不是只看 alert_open：后者只能说明"报过"，
-        # 说明不了"报过几次"，算不出递增的间隔。
+        # 说明不了"报过几次"，算不出递增的间隔。间隔判据见 alert_gap()（三根轴共用）。
         rep = int(ag.get("alert_repeat", 0))
-        if rep >= ALERT_BACKOFF_AFTER:
-            gap = min(ALERT_BACKOFF_BASE * ALERT_BACKOFF_FACTOR ** (rep - ALERT_BACKOFF_AFTER + 1),
-                      ALERT_BACKOFF_CAP)
-            gap = max(gap, cooldown)       # 用户显式把 cooldown 调大时，以它为准
-        else:
-            gap = cooldown
+        gap = alert_gap(rep, cooldown)
         if ag.get("alert_open") and t - float(ag.get("last_alert_at", 0.0)) < gap:
             continue
         escalated = bool(ag.get("alert_open"))
@@ -1482,20 +1539,34 @@ def emit(d: Path, st: dict, res: dict, cooldown: float = COOLDOWN) -> list:
                              "text": txt, "acked_by": None})
         written.append(line)
     # 危险等待（不可达 / 死锁）也要告警：这类故障心跳全绿，只有看等待图才看得见。
-    # 按 key 去重 + 冷却，并且险情一旦消失就把 key 清掉，下次复发了还能再报一次。
+    # 按 key 去重 + 退避，并且险情一旦消失就把 key 连同「报过几次」一起清掉 ——
+    # 复发要从头开始算，而不是接着上一轮的间隔（否则一次偶发会长期压低灵敏度）。
+    # ★ 两张表同生共死：值表保持裸时间戳（旧进程读得动，见 _seen_last），次数表是新加的。
     haz = res.get("hazards") or []
     hseen = st.setdefault("hazard_seen", {})
+    hrep = st.setdefault("hazard_repeat", {})
     live = {h["key"] for h in haz}
     for k in list(hseen):
         if k not in live:
             hseen.pop(k, None)
+    for k in list(hrep):
+        if k not in live:
+            hrep.pop(k, None)
     for h in haz:
-        if h["key"] in hseen and t - float(hseen[h["key"]]) < max(cooldown, 60):
+        last = _seen_last(hseen.get(h["key"]))
+        rep = int(hrep.get(h["key"]) or 0)
+        if last and t - last < alert_gap(rep, cooldown, HAZARD_MIN_GAP):
             continue
         hseen[h["key"]] = t
+        hrep[h["key"]] = rep + 1
         st["alert_seq"] = int(st.get("alert_seq", 0)) + 1
         aid = st["alert_seq"]
         txt = f"[{h['kind']}] {h['text']}"
+        if rep + 1 > ALERT_BACKOFF_AFTER:
+            # 与办事轴同一理由：同一句话重复到第 N 次时，看板上必须**看得出这是重复**，
+            # 否则读者以为又出了一件事（那正是它刷屏 170/200 的原因之一）。
+            txt += (f"\n  （这是第 {rep + 1} 次重复提醒，已退避；"
+                    f"下次约 {int(alert_gap(rep + 1, cooldown, HAZARD_MIN_GAP))}s 后）")
         line = append_entry(d, st, "watchdog", txt, tag="告警")
         with open(p_alerts(d), "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
@@ -1506,16 +1577,24 @@ def emit(d: Path, st: dict, res: dict, cooldown: float = COOLDOWN) -> list:
     # 与心跳轴并列，但只报「对方还答得出来」那一类 —— 对方已收工的那些不是事故，
     # 是「提问者该自己结案」（await 对它们本来就立刻退 3），报出来只是噪音。
     # 两类分开处置，正是它们该被拆成两类的理由。去重按提问编号，闭环即清。
+    # ★ 与险情轴同样：值表保持裸时间戳（旧进程读得动），次数另存一张表、同生共死。
     oseen = st.setdefault("open_seen", {})
+    orep = st.setdefault("open_repeat", {})
     live_open = {f"open:#{r['id']}" for r in res.get("stale_opens") or []}
     for k in list(oseen):
         if k not in live_open:
             oseen.pop(k, None)
+    for k in list(orep):
+        if k not in live_open:
+            orep.pop(k, None)
     for r in res.get("stale_opens") or []:
         key = f"open:#{r['id']}"
-        if key in oseen and t - float(oseen[key]) < max(cooldown, 60):
+        last = _seen_last(oseen.get(key))
+        rep = int(orep.get(key) or 0)
+        if last and t - last < alert_gap(rep, cooldown, HAZARD_MIN_GAP):
             continue
         oseen[key] = t
+        orep[key] = rep + 1
         st["alert_seq"] = int(st.get("alert_seq", 0)) + 1
         aid = st["alert_seq"]
         peer_state = str((res["by_name"].get(r["to"]) or {}).get("state") or "?")
@@ -1527,6 +1606,11 @@ def emit(d: Path, st: dict, res: dict, cooldown: float = COOLDOWN) -> list:
                f"或催它 `ask --agent {r['from']} --to {r['to']} --text …`；"
                f"确实不办了就由提问者说明一句，别让它一直挂着（阈值 "
                f"{int(res.get('stale_open_after') or 0)}s，见 `init --stale-open-after`）")
+        if rep + 1 > ALERT_BACKOFF_AFTER:
+            # 同一句话重复到第 N 次时，看板上必须**看得出这是重复** ——
+            # 否则读者以为又出了一件事（这正是它刷屏 170/200 的原因之一）。
+            txt += (f"\n  （这是第 {rep + 1} 次重复提醒，已退避；"
+                    f"下次约 {int(alert_gap(rep + 1, cooldown, HAZARD_MIN_GAP))}s 后）")
         line = append_entry(d, st, "watchdog", txt, tag="告警")
         with open(p_alerts(d), "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
@@ -1926,6 +2010,12 @@ def cmd_identity(a):
             }
             save_identities(d, ids)
             print(f"✓ 已登记：{name} ← {cwd}")
+            # 这句登记正是 ⑦a 让你做的补救动作**本身**（"给每条线起名字"）——
+            # 所以它必须顺手把过期的同名旗标清掉，否则医生永远好不了。
+            _st = load_state(d)
+            _cleared = clear_stale_cwd_conflicts(_st, cwd, name)
+            if _cleared:
+                save_state(d, _st)
             if spawn_why:
                 print(f"  ⓘ 已声明为 **spawn 即活型**：{spawn_why}")
                 print(f"    含义：看门狗**不再**按心跳判它卡死（今天 33 条误报全来自这里）。"
@@ -1941,6 +2031,10 @@ def cmd_identity(a):
                 print(f"    撤销：identity set --agent {name} --no-loop")
             print(f"  以后在这个目录跑命令，不传 --agent 也能认出你；"
                   f"想换个会话也钉死：export {AGENT_ENV}={name}")
+            if _cleared:
+                print(f"  ⓘ 顺手清掉 {len(_cleared)} 条过期的「同名多线」旗标："
+                      f"{'、'.join(_cleared)} —— 本目录已有自己的名字，"
+                      f"不会再顶着它们的名字发帖（doctor ⑦a 会随之转绿）")
             return EXIT_OK
         if action == "rm":
             if not (a.agent or "").strip():
@@ -2400,6 +2494,55 @@ def note_cwd(ag: dict, t: float) -> str:
     ag["cwd_warned"] = warned[-5:]      # 只留最近几个，别让 state.json 跟着长
     ag["cwd_conflict"] = my
     return known
+
+
+def claimed_name_for_dir(d: Path, cwd: str) -> str:
+    """本目录在名字登记表里**认领**的名字（没认领则空串）。
+
+    「认领」是 `identity set` 这个动作，不是"从这儿发过帖" —— 后者显式 `--agent`
+    从任何目录发帖都成立，拿它当判据会误判（见 clear_stale_cwd_conflicts）。
+    """
+    for nm, v in (load_identities(d) or {}).items():
+        c = str((v or {}).get("cwd") or "")
+        if c and same_project(c, cwd):      # c 为空时 same_project 恒真，必须先挡掉
+            return nm
+    return ""
+
+
+def clear_stale_cwd_conflicts(st: dict, cwd: str, except_name: str) -> list:
+    """清掉「冲突目录就是 cwd」的那些**过期** cwd_conflict 旗标，返回被清的名字。
+
+    **调用方必须先确认前提**：本目录已经**认领**了自己的名字，且这次**就是用它**
+    在说话。两个条件缺一不可 —— 缺了就是误清（本函数自己看不出来，所以写在契约里）：
+      · 只凭「从本目录发过帖」不够：显式 `--agent` 从任何目录发帖都成立。
+        实测（`[42](j)`）：a2 只是从目录 c 发了一条帖，就把 a1 在 c 上的冲突旗标清了。
+      · 只凭「登记过名字」也不够：同一台机器上仍可能显式用别的名字发帖。
+    两个都成立时才意味着「本目录不会再顶着别人的名字发帖」。
+
+    背景（2026-10-01 实测）：cwd_conflict 当初为「同一个人持续从第二个目录发帖时
+    别每条心跳都刷一遍板」而设计成写下就不再改（见 note_cwd 注释），但**全文件
+    没有任何清除路径** —— grep 只有一处赋值。后果是：⑦a 提示你做的那两件补救
+    动作（`identity set --agent <名字>` / `export WORK_LOG_AGENT=<名字>`）做完之后，
+    doctor 的 ⑥ 已经转绿、⑦a 却永远 ✗，总结论继续挂着「通道没落好，我随时可能
+    人间蒸发」。一个**永远好不了**的告警等于没有告警 —— 它训练人去忽略医生。
+
+    判据故意窄：只清「某个名字的 cwd_conflict 指的正是本目录」的那些；
+    冲突方在**别的**目录的名字一律不动 —— 那种冲突可能还是真的。
+
+    同时把 cwd 从 cwd_warned 里摘掉：万一以后本目录又顶着这个名字发帖，
+    note_cwd 能重新喊一次，而不是被"已经喊过"永久静音 —— 清掉不等于免报。
+    """
+    out = []
+    for n2, v2 in (st.get("agents") or {}).items():
+        if n2 == except_name or not isinstance(v2, dict):
+            continue
+        cf = str(v2.get("cwd_conflict") or "")
+        if cf and same_project(cf, cwd):
+            v2["cwd_conflict"] = ""
+            v2["cwd_warned"] = [w for w in (v2.get("cwd_warned") or [])
+                                if not same_project(str(w), cwd)]
+            out.append(n2)
+    return out
 
 
 def _get_agent(st: dict, name: str, t: float) -> dict:
@@ -3077,6 +3220,13 @@ def cmd_post(a):
         # 后者对「一进程多会话」的形态（WorkBuddy / Electron 桌面版）探测不出、
         # 按设计返回空串不猜，于是那种情况下合并**一点痕迹都没有**（实测 2026-09-28）。
         other_cwd = note_cwd(ag, t)
+        # 本目录**已认领**自己的名字、且这次**就是用它**在说话 ⇒「本目录顶着别人的
+        # 名字发帖」这个前提不存在了（不清的话 doctor ⑦a 会永远 ✗）。
+        # 两个条件缺一不可，理由见 clear_stale_cwd_conflicts 的契约 ——
+        # 只凭"从本目录发过帖"会误清（[42](j) 实测：a2 从 c 发一条帖清了 a1 的旗标）。
+        _mine = claimed_name_for_dir(d, _my_cwd())
+        if _mine and _mine == a.agent:
+            clear_stale_cwd_conflicts(st, _my_cwd(), a.agent)
         tag = a.tag or ("任务完成" if a.done else None)
         # 「完成」的判据只有一处（agent_is_done）：看门狗与这里的"收工即放手"必须同一套。
         # 曾经这里写的是 `if a.done:`，于是板上按惯例发 `--tag 任务完成` 的 agent
@@ -4743,14 +4893,27 @@ def cmd_retire(a):
         with locked(d):
             st = load_state(d)
             ag = (st.get("agents") or {}).get(a.agent)
-            if not ag or not ag.get("retired"):
-                print(f"✗ <{a.agent}> 没有被宣告过离场，无可撤销")
-                return 1
+            # ★ 这两条分支原来合并成一句 `return 1`（2026-10-01 修）。它有两个毛病，
+            #   而且两个都不是"风格"问题：
+            #   ① **同一个命令的两条路对同一种输入给了不同的码**：正向路径里
+            #      「名字没出现过」是 2（"名字打错了？"），这里却是 1。
+            #   ② 1 在这套协议里的定义是「业务：超时 / 对方没回」，**样本全是故障**
+            #      （见 EXIT_PEER_DONE 的注释："别把一个期望结局挪去 1"）。
+            #      于是调用方把「本来就没什么可撤销」读成了「对方不配合」，去走重试/换人。
+            if ag is None:
+                print(f"✗ <{a.agent}> 还没在这块板上出现过（state 里没有它）——名字打错了？")
+                print("  --undo 只对「出现过、且被宣告过离场」的 agent 有意义。")
+                return EXIT_USAGE
+            if not ag.get("retired"):
+                # 幂等 no-op：与正向那条「已在离场名单里 …… 无需重复」对称。
+                # 已经是目标状态 = 成功，不是故障。
+                print(f"• <{a.agent}> 本来就没被宣告过离场，无需撤销——它一直在心跳监督下")
+                return EXIT_OK
             for k in ("retired", "retired_at", "retired_by", "retired_note"):
                 ag.pop(k, None)
             save_state(d, st)
         print(f"✓ 已撤销 <{a.agent}> 的离场标记：它重新纳入心跳监督")
-        return 0
+        return EXIT_OK
     with locked(d):
         st = load_state(d)
         ag = (st.get("agents") or {}).get(a.agent)

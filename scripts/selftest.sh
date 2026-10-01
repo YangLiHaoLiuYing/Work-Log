@@ -17,6 +17,17 @@ trap cleanup EXIT
 
 PASS=0; FAIL=0; NOTES=""
 
+# ---- 派生数字的**唯一真源** -------------------------------------------------
+# 断言总数散落在 README 中英（含 badge）、banner.svg、SKILL.md、CONTRIBUTING.md、
+# references/*.md、docs/*、**CI 步骤名**等 20 多处。它已经漂过 4 次，每次都靠
+# "手工再扫一遍"收场、然后再漂（最近一次声称「全树清零」，仍漏了 4 处）。
+# 所以：数字只在这里声明一次，[52] 组负责拿它去全树对账，末尾的元检查负责
+# 钉死"这个数就是本套件真的会跑出来的断言数"。两头都堵上：
+#   · 加了断言忘了改这里  ⇒ 元检查红（它会直接告诉你改成几）
+#   · 改了这里忘了刷文档  ⇒ [52] 红（它会逐行列出要改哪个文件哪一行）
+# 改这个数时**只改这一处**，然后跑一遍，红的地方就是模板要跟着改的地方。
+ASSERT_TOTAL=734
+
 # 源文件指纹。**这个护栏是被自己坑出来的**（2026-09-29 一天内犯了两次）：改引擎的同时
 # 让自测在跑 ⇒ 前面的组读旧文件、后面的组读新文件，而那次的"红/绿"两边都不可信，
 # 最坏的情况是"绿了但其实半路换过文件"。靠"记得别同时改"是防不住的，所以让它自证：
@@ -1845,7 +1856,15 @@ has "post 当场提示离场标记已自动复位" "$oG" "离场标记已自动�
 hasnt "复位后不再是已离场" "$(QG status --stale-after 30 --json 2>/dev/null)" '"已离场"'
 has "复位后回到监督（心跳中）" "$(QG status --stale-after 30 --json 2>/dev/null)" '"心跳中"'
 QG retire --agent ghost >/dev/null 2>&1; usage "retire 不存在的名字退 2（不静默创建）" $?
+# ★ `--undo` 原来把「名字没出现过」和「出现了但没离场过」合并成一句 `return 1`（2026-10-01 修）。
+#   两条都是"用错法"，不是"对方不配合" —— 所以必须走 usage()，不能借用业务码 1。
+#   而且正向路径对**同一种输入**（名字没出现过）给的是 2 ⇒ 同一个命令内部口径必须一致。
+QG retire --agent ghost --undo >/dev/null 2>&1
+usage "undo 一个从没出现过的名字也退 2（与正向同口径）" $?
 QG post --agent g2 --text 注册 >/dev/null
+# 幂等 no-op：还没离场就 undo —— 已经是目标状态 = 成功（对称于正向的「已在离场名单里，无需重复」退 0）。
+QG retire --agent g2 --undo >/dev/null 2>&1
+eq "undo 一个『还没离场』的名字退 0（幂等 no-op，不是 1）" $? 0
 QG retire --agent g2 >/dev/null
 has "(正向前置) g2 已在离场名单" "$(QG status --stale-after 1 --json 2>/dev/null)" '"已离场"'
 QG retire --agent g2 --undo >/dev/null; eq "undo 退 0" $? 0
@@ -2528,6 +2547,43 @@ o42g=$(P42 "$X42/a" status 2>&1)
 hasnt "(j) 换名字就不会被算成多线（证明判据盯的是名字+目录，不是目录）" \
   "$(printf '%s\n' "$o42g" | grep '^a2' )" "同名多线"
 
+# ---- 42b cwd_conflict 必须能被清掉（否则 doctor ⑦a 永远 ✗）------------------
+# 现场（2026-10-01 真板）：cwd_conflict 当初为了「同一个人持续从第二个目录发帖
+# 别每条心跳都刷一遍板」而做成**写下就不再改**，但全文件没有任何清除路径
+# （grep 只有一处赋值）。后果是 ⑦a 提示你做的那两件补救动作 —— `identity set` /
+# `export WORK_LOG_AGENT=` —— 做完之后：doctor 的 ⑥ 已经转绿、⑦a 却永远 ✗，
+# 总结论继续挂着「通道没落好，我随时可能人间蒸发」。一个**永远好不了**的告警
+# 等于没有告警：它只训练人去忽略医生。
+# 判据故意窄 —— 需要「本目录这次是以某个名字说话的」+「某名字的冲突方正是本目录」
+# 同时成立才清；冲突在**别的**目录的名字一律不动，那种冲突可能还是真的。
+cf42() { "$PY" - "$XB" "$1" <<'PYX'
+import json, sys
+st = json.load(open(sys.argv[1] + "/state.json"))
+print(str((st["agents"].get(sys.argv[2]) or {}).get("cwd_conflict") or ""))
+PYX
+}
+# _my_cwd() 走 Path.cwd().resolve() ⇒ 返回物理路径；$TMP 是 mktemp 给的 /var/…，
+# 直接比对会全红且红的是测试不是被测代码 —— 先归一化（本文件 [42] 段的坑）。
+C42R=$(cd "$X42/c" && pwd -P)
+eq "(k) 前置：此刻 a1 的冲突方是 c（上面 (e) 留下的）" "$(cf42 a1)" "$C42R"
+P42 "$X42/c" identity set --agent c1 --purpose "c 自己的线" >/dev/null
+eq "(l) ★ identity set —— 也就是 ⑦a 自己给的那条修法 —— 顺手清掉过期旗标" "$(cf42 a1)" ""
+hasnt "(m) 清掉之后 doctor ⑦a 不再指控它" "$(P42 "$X42/a" doctor 2>&1)" "<a1>："
+# 反向对照：清掉**不是**永久静音。本目录再顶着那个名字发帖必须重新喊 ——
+# 否则"清一次"就变成了给自己永远免报的后门，比不清更坏。
+o42k=$(P42 "$X42/c" post --agent a1 --text "c 又顶着 a1 发" 2>&1)
+has "(n) ★ 又顶着它发帖 ⇒ 重新喊（证明清掉不等于永久静音）" "$o42k" "同名多线"
+eq "(o) 旗标重新立起" "$(cf42 a1)" "$C42R"
+# ⑦a 提示的另一条修法 `export WORK_LOG_AGENT=` 根本不经过 cmd_identity，
+# 所以 post 这条热路径上也必须能清 —— 否则一半修法有效、一半无效，又是一种静默。
+( cd "$X42/c" && WORK_LOG_AGENT=c1 "$PY" "$WL" --dir "$XB" post --text "c 用自己的名字 c1" ) >/dev/null
+eq "(p) post 路径（export WORK_LOG_AGENT 那条修法）同样能清" "$(cf42 a1)" ""
+P42 "$X42/c" post --agent a1 --text "把冲突重新立成 c" >/dev/null
+eq "(q) 前置：冲突方又是 c" "$(cf42 a1)" "$C42R"
+P42 "$X42/a" identity set --agent a0 --purpose "a 自己的线" >/dev/null
+eq "(r) ★ a 只是 a1 的 home、不是冲突方 ⇒ 窄判据不许误清" "$(cf42 a1)" "$C42R"
+has "且 doctor ⑦a 仍如实报它（没有为了好看而粉饰）" "$(P42 "$X42/a" doctor 2>&1)" "<a1>："
+
 # ---- 43 互相等待：await 当场发现「我要等的人正在等我」-----------------------
 echo "[43] 互相等待：await 不再干等到超时（退出码 5）"
 # 现场（2026-09-28 真模型验收首次撞到）：两个真模型 agent 各问各的、同时阻塞等对方
@@ -3119,6 +3175,336 @@ fi
 # (b) 结构性：每个会 post 的脚本都必须显式关掉自动 UI。
 eq "(b) 会 post 的脚本都显式关掉了自动 UI（缺了会点名）" "${n50l:-0}" 0
 [ "${n50l:-0}" -eq 0 ] || printf '    ↑ 缺 WORK_LOG_NO_AUTO_UI：%s\n' "$(printf '%s\n' "$r50" | sed -n 's/^LEAK //p' | tr '\n' ' ')"
+
+# ---- 51 告警退避（三根轴共用一处判据）+ 台账不丢未确认 ----------------------
+echo "[51] 告警：三根轴都要退避，且未确认告警不许被静默裁掉"
+# 现场（2026-10-01 真板）：退避只长在**心跳轴**上，后加的**险情轴**（不可达等待/
+# 互相等待）与**办事轴**（提问没人办）用的是恒定的 max(cooldown,60) ⇒
+# 一个**永久开着**的提问每 135s 报一次、永远报下去。
+# 真板上实测：7 个僵尸提问在最近 200 条台账里占了 170 条（85%），alert_seq 已发到
+# 3145 而台账只留得下 200 ⇒ 约 2945 条被挤出窗口，窗口外的信号就永久丢了。
+# 而心跳轴的注释早就写明了退避的理由（「噪音会反过来把真信号埋掉」）——
+# **"记住结论"没能变成"长在同一条轴上"**，所以本组钉的就是"判据只有一处"。
+# 同一类病还有第二条：prune_alerts 无条件 al[-200:] ⇒「未确认」也会被无声裁掉，
+# 而同一个函数里 exchanges 那段注释明说「未确认的永远保留」。
+X51="$TMP/backoff51"; mkdir -p "$X51"
+O51=$("$PY" - "$WL" "$X51" <<'PYX'
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("wl", sys.argv[1])
+wl = importlib.util.module_from_spec(spec); spec.loader.exec_module(wl)
+D = pathlib.Path(sys.argv[2]); D.mkdir(parents=True, exist_ok=True)
+T = [1000.0]                     # 受控虚拟时钟：不 sleep，直接推时间
+wl.now = lambda: T[0]
+
+def res(**kw):
+    r = {"stale": [], "hazards": [], "stale_opens": [], "repeat_done": [],
+         "collab": {}, "by_name": {}, "stale_after": 90, "stale_open_after": 0}
+    r.update(kw); return r
+
+def fresh():
+    st = {"agents": {}, "alerts": [], "alert_seq": 0}
+    wl.ensure_files(D, st)
+    return st
+
+def drive(st, r, dt=45.0, steps=320, cooldown=135.0):
+    """推时钟 + 反复 emit，返回每次新告警之间的间隔（秒）。
+
+    dt 取 45：135/270/540/1080/2160/3600 都是它的整数倍，间隔序列能精确比对；
+    又比 15 少三分之二的步数（本组跑的全是真实文件追加，步数直接等于耗时）。
+    """
+    fires = []
+    for _ in range(steps):
+        T[0] += dt
+        n0 = len(st["alerts"])
+        wl.emit(D, st, r, cooldown)
+        if len(st["alerts"]) > n0:
+            fires.append(T[0])
+    return [int(b - a) for a, b in zip(fires, fires[1:])]
+
+seq = lambda xs: ",".join(str(x) for x in xs)
+
+r_open = res(stale_opens=[{"id": 1, "from": "a1", "to": "a2", "waited": 999}],
+             by_name={"a2": {"state": "心跳中"}})
+st = fresh(); print("open_gaps=" + seq(drive(st, r_open)))
+
+st = fresh(); st["agents"]["a1"] = {}
+r_hb = res(stale=["a1"], by_name={"a1": {"silence": 999}})
+print("hb_gaps=" + seq(drive(st, r_hb)))
+
+r_haz = res(hazards=[{"key": "h:1", "kind": "不可达等待",
+                      "agents": ["a1", "a2"], "text": "测试险情"}])
+st = fresh(); print("haz_gaps=" + seq(drive(st, r_haz)))
+
+# 险情消失 ⇒ key 与计数一起清掉；复发立刻能报（不是接着上一轮的间隔）
+st = fresh(); drive(st, r_haz, steps=40)
+rep_before = int((st.get("hazard_repeat") or {}).get("h:1") or 0)
+seen_kind = type(st["hazard_seen"]["h:1"]).__name__
+wl.emit(D, st, res(), 135.0)
+cleared = "h:1" not in st["hazard_seen"]
+cleared_rep = "h:1" not in st["hazard_repeat"]      # 两张表必须同生共死
+t0 = T[0]; recur = -1
+for _ in range(20):
+    T[0] += 15.0
+    n0 = len(st["alerts"]); wl.emit(D, st, r_haz, 135.0)
+    if len(st["alerts"]) > n0:
+        recur = int(T[0] - t0); break
+# 一行一个 key：k51 是按行剥前缀的，一行塞多个 key 会把它整行留下（本组第一版就栽在这）
+print(f"haz_rep_big={int(rep_before >= 4)}")
+print(f"haz_cleared={int(cleared)}")
+print(f"haz_cleared_repeat={int(cleared_rep)}")
+print(f"haz_recur_gap={recur}")
+print(f"seen_value_kind={seen_kind}")
+
+# ★ 兼容性：同一块板上可能**同时跑着新旧两个版本** —— `serve` 的 watchdog_loop 是长驻的
+# （真板实测连续跑过 1 天以上），升级引擎后它不会自己重启，而旧版的读法是
+# `float(hseen[key])`。所以值表必须一直是**裸时间戳**：一旦写成 dict，
+# 旧进程下一轮就抛 TypeError、**看门狗从此静默**，而这事没人会立刻发现。
+st = fresh(); st["hazard_seen"] = {"old:1": T[0]}
+r_old = res(hazards=[{"key": "old:1", "kind": "K", "agents": ["a1", "a2"], "text": "t"}])
+n0 = len(st["alerts"]); wl.emit(D, st, r_old, 135.0)
+same_t = int(len(st["alerts"]) == n0)
+T[0] += 135.0
+n0 = len(st["alerts"]); wl.emit(D, st, r_old, 135.0)
+old_kind = type(st["hazard_seen"]["old:1"]).__name__
+print(f"old_fmt_same_t={same_t}")
+print(f"old_fmt_after_gap={int(len(st['alerts']) > n0)}")
+print(f"old_fmt_value_kind={old_kind}")
+
+# prune：未确认优先保留
+st = {"alerts": [{"id": i, "acked_by": None if i <= 3 else "someone"} for i in range(1, 251)]}
+wl.prune_state(st)
+print(f"prune_total={len(st['alerts'])}")
+print(f"prune_unacked={sum(1 for a in st['alerts'] if not a.get('acked_by'))}")
+st = {"alerts": [{"id": i, "acked_by": "x"} for i in range(1, 251)]}
+wl.prune_state(st); print(f"prune_allacked_first={st['alerts'][0]['id']}")
+st = {"alerts": [{"id": i} for i in range(1, 401)]}
+wl.prune_state(st)
+print(f"prune_allunacked_total={len(st['alerts'])}")
+print(f"prune_allunacked_first={st['alerts'][0]['id']}")
+print("done=1")
+PYX
+)
+k51() { printf '%s\n' "$O51" | sed -n "s/^$1=//p"; }
+# 期望序列：rep<3 时都按 cooldown(135)，rep=3 起 135·2^(rep-2) 翻倍、3600 封顶
+# ⇒ 135,135,270,540,1080,2160,3600,3600（**8** 个间隔，别数成 9 个）。
+# 三根轴给的是同一条串：既证明都退避了，也证明"收成一处"没改坏原来那根。
+GAPS51="135,135,270,540,1080,2160,3600,3600"
+# 前置断言（本组第一版就栽在这两条上）：k51 是按行剥前缀的 ——
+# 一行塞多个 key 会把整行留下，看起来像"值多了一截"，实际是测试错了、被测代码没错。
+# 加了新断言就配一条前置断言，是 [36] 组那条纪律的复用。
+eq "(0) 前置：key 行数符合预期（少一行 = 有 key 没打出来）" \
+   "$(printf '%s\n' "$O51" | grep -c '=')" "17"
+eq "(0) 前置：每个 key 独占一行（值里不许有空格）" \
+   "$(printf '%s\n' "$O51" | grep -c '=.* ')" "0"
+eq "(a) ★ 办事轴退避：间隔递增，不再恒定 135s" "$(k51 open_gaps)" "$GAPS51"
+eq "(b) 回归：心跳轴节奏不变（判据收成一处，没改坏原来那根）" "$(k51 hb_gaps)" "$GAPS51"
+eq "(c) ★ 险情轴也退避（它此前同样没有）" "$(k51 haz_gaps)" "$GAPS51"
+eq "(d) 前置：上面已把险情攒到退避状态（rep>=4）" "$(k51 haz_rep_big)" "1"
+eq "(d) ★ 险情消失后 key 清掉" "$(k51 haz_cleared)" "1"
+eq "(d) ★ 且「报过几次」那张表一起清（两张表同生共死）" "$(k51 haz_cleared_repeat)" "1"
+eq "(d) ★ 复发时立刻能报（一步内），而不是接着上一轮的 3600s" "$(k51 haz_recur_gap)" "15"
+eq "(e) ★ 值表是**裸时间戳**（不是 dict）：旧版常驻进程读得动" "$(k51 seen_value_kind)" "float"
+eq "(e) 旧格式读得动、不崩（同一时刻认为刚报过 ⇒ 不重复报）" "$(k51 old_fmt_same_t)" "1"
+eq "(e) 且退化成按 cooldown 起算（过 135s 就报）" "$(k51 old_fmt_after_gap)" "1"
+eq "(e) ★ 写回之后仍然是 float（新旧进程共存的安全前提）" "$(k51 old_fmt_value_kind)" "float"
+eq "(f) ★ prune：250 条里 3 条未确认 ⇒ 一条都不丢" "$(k51 prune_unacked)" "3"
+eq "(f) 且台账总量仍封顶 200（不会无限长）" "$(k51 prune_total)" "200"
+eq "(g) 对照：全已确认时照旧裁到 200（不是「永不裁」）" "$(k51 prune_allacked_first)" "51"
+eq "(h) 极端：未确认自己就超上限 ⇒ 仍封顶" "$(k51 prune_allunacked_total)" "200"
+eq "(h) 且裁掉的是最老的未确认（没有整段消失）" "$(k51 prune_allunacked_first)" "201"
+eq "(i) 自测脚本跑完（没中途抛异常）" "$(k51 done)" "1"
+
+# ---- 52 发布面派生数字对账 -------------------------------------------------
+# 背景：这个项目里最"没人读就发现不了"的一类错 —— 断言总数 / 组数这两个派生数字
+# 散落在 README 中英（含 shields.io badge）、banner.svg、SKILL.md、CONTRIBUTING.md、
+# references/*.md、docs/*、**CI 步骤名**等 20 多处。它已经漂过 4 次，每次都靠
+# "手工再扫一遍"收场、然后再漂：最近一次（09-30「重审批」）明确声称
+# 「过期基线数字**全树清零**」，实测仍留着 4 处旧值 —— 其中一处就是它正在改的那个
+# README 的 **badge**（同一个文件里 badge 写 656、正文写 698）。
+# 所以这里修的是**判据**，不是数字：把"全树一致"变成一条会红的断言。
+# 真源 = 文件头部的 ASSERT_TOTAL（唯一声明处）；末尾的元检查钉死"它就是实际断言数"。
+echo "[52] 发布面派生数字对账"
+PY52=$("$PY" - "$HERE" "$ASSERT_TOTAL" <<'PY'
+import pathlib, re, sys
+
+
+def bail(msg):
+    """检查器**自己**没跑起来（读不到 selftest.sh / 参数坏了）时必须显式报出来，
+    而不是给一摞 0 让上层看着像"通过"。判据同 scripts/check_stdlib_only.py：
+    工具跑不起来绝不伪装成业务结论。键要打全（上层按键数做前置断言），
+    所以这里照常打印 7 个键，只是 bad=1 + 一行说明。"""
+    print("groups=0")
+    print("cand=0")
+    print("seen=0")
+    print("exempt_hit=0")
+    print("exempt_inert=0")
+    print("missing=-")
+    print("bad=1")
+    print("BAD 检查器自己没跑起来：%s" % msg)
+    sys.exit(1)
+
+
+try:
+    here = pathlib.Path(sys.argv[1]).resolve()
+    total = int(sys.argv[2])
+except (IndexError, ValueError) as e:
+    bail("参数不对（需要 <包根>/scripts 与 ASSERT_TOTAL 整数）：%s" % e)
+
+root = here.parent
+
+# ① 组数：口径必须与文档写的一致（文档给的是
+#    `grep -cE 'echo .*\[[0-9]+[a-z]?\]' scripts/selftest.sh`）。
+HEADING_RE = re.compile(r'^echo .*\[\d+[a-z]?\]')
+try:
+    heading_txt = (here / "selftest.sh").read_text(encoding="utf-8")
+except OSError as e:
+    bail("读不到 %s：%s" % (here / "selftest.sh", e))
+groups = sum(1 for ln in heading_txt.split("\n") if HEADING_RE.match(ln))
+
+# ② 「当前基线」的写法。**按形状搜，不按具体数字搜** —— 旧值不是一个点、是一条链
+#    （pitfalls.md 记着：只搜上一版的值，漏了「29 组 249 条」整整 394 条的差）。
+#
+#    ⚠ 这张表**本身就是被实测打回来一次才补全的**：第一版只认「N 条断言」+「N 组 M 条」，
+#      漏了同一批文档里另外 5 处 —— 「698 条**回归**断言」「61 个测试组」「698-assertion」
+#      「(61 groups)」「61 组 0 失败」。**护栏的搜索形状自己也要按语义验一遍**，
+#      否则它只是一条"看起来在守"的断言（那比没有更坏）。补全的办法是把网的收口
+#      从"具体句式"改成"载荷"：凡一行里出现**条数声明**，就把它当候选行，
+#      然后这一行里**所有**条数/组数都必须对得上。
+TOTAL_RE = [re.compile(r'(\d{2,4})\s*条\S{0,6}断言'),   # 698 条断言 / 698 条回归断言
+            re.compile(r'(\d{2,4})[- ]assertions?\b'),  # 698 assertions / 698-assertion
+            re.compile(r'assertions-(\d{2,4})'),        # shields.io badge
+            re.compile(r'(\d{1,3})\s*组\s*(\d{2,4})\s*条'),   # 61 组 698 条
+            re.compile(r'通过\s*(\d{2,4})\s*·')]        # 通过 698 · 失败 0
+# 组数只在**已经是候选的行**上才检查（`第 28 组`、`56 组` 这类引用/编号不该被误伤）；
+# `(?!合|数)` 挡掉「4 个组合」「第 28 组数的是」。
+GROUP_RE = re.compile(r'(\d{1,3})\s*个?(?:测试)?组(?!合|数)|\((\d{1,3})\s*groups?\)|(\d{1,3})\s*groups?\b')
+
+
+def claims(ln):
+    """这一行声明了哪些「条数」。返回 [(原文, 数字), …]。"""
+    out = []
+    for p in TOTAL_RE:
+        for m in p.finditer(ln):
+            out.append((m.group(0), int(m.group(2) if p.groups == 2 else m.group(1))))
+    return out
+
+
+def is_candidate(ln):
+    return bool(claims(ln))
+
+
+def offenders(ln):
+    out = []
+    for text, n in claims(ln):
+        if n != total:
+            out.append("%s 里的条数 %s≠%d" % (text, n, total))
+    for m in GROUP_RE.finditer(ln):
+        g = next((x for x in m.groups() if x), None)
+        if g is not None and int(g) != groups:
+            out.append("%s 里的组数 %s≠%d" % (m.group(0), g, groups))
+    return out
+
+
+# ③ 豁免：**只豁免"历史 / 举例"，不豁免"当前基线"**。写 None = 整文件豁免。
+#    文件不存在 ⇒ 该条跳过（发布包 / 运行副本是**部分布局**，没有 docs/ 与 README）；
+#    文件在、却一条都没命中 ⇒ **空转**，当红 —— 否则豁免会悄悄烂掉、把真的漏放过去。
+EXEMPT = [("CHANGELOG.md", None),                     # 变更日志 = 历史账本
+          ("docs/VALIDATION.md", "套件此后继续增长"),   # 验收文档里的"历史沿革"整段
+          ("SKILL.md", "29 组 249 条"),                # 引述"CI 步骤名漏了 394 条"这个坑
+          ("docs/DESIGN.md", "13 条断言"),             # "13 条断言原本期望 1" = 缺陷，不是基线
+          ("references/pitfalls.md", "29 组 249 条")]  # 同上：坑的账本
+
+# ④ 这几处**必须在扫描面里**（存在才要求）；缺了要报出来，不许静默降级。
+WATCH = ["README.md", "README.en.md", "assets/banner.svg",
+         ".github/workflows/test.yml", "docs/preview.html"]
+
+# ⑤ 备份 / 快照目录里的**旧副本不是发布面**。不排除它们，一次 `cp -p` 备份就会让这条
+#    护栏对着历史文件哭狼 —— 而"护栏喊狼来了"的下场从来不是没人理它，是**有人去放宽判据**，
+#    于是真漏也就跟着过去了。实测：给安装副本做同步备份时，护栏当场报 72 处。
+#    只按**名字**排除，不按"点开头"排除 —— 因为 `.github/` 恰恰是必须扫的那个。
+SKIP_PART = re.compile(r'(?i)backup|^\.cache$|^node_modules$')
+SKIP_SUFFIX = ("~", ".bak", ".orig", ".tmp", ".swp", ".rej")
+
+EXT = {".md", ".yml", ".yaml", ".html", ".svg"}
+cand = 0
+exempt_hit = 0
+hit_by = {}
+seen_files = set()
+bad = []
+
+for f in sorted(root.rglob("*")):
+    if ".git" in f.parts or not f.is_file() or f.suffix not in EXT:
+        continue
+    parts = f.relative_to(root).parts
+    if any(SKIP_PART.search(p) for p in parts) or f.name.endswith(SKIP_SUFFIX):
+        continue
+    rel = "/".join(parts)
+    try:
+        text = f.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        continue
+    for i, ln in enumerate(text.split("\n"), 1):
+        if not is_candidate(ln):
+            continue
+        for path, mark in EXEMPT:
+            if rel == path and (mark is None or mark in ln):
+                exempt_hit += 1
+                hit_by[path] = hit_by.get(path, 0) + 1
+                break
+        else:
+            cand += 1
+            seen_files.add(rel)
+            for d in offenders(ln):
+                bad.append("%s:%d  %s" % (rel, i, d))
+
+exempt_inert = sum(1 for path, _m in EXEMPT
+                   if (root / path).is_file() and not hit_by.get(path))
+missing = [p for p in WATCH if not (root / p).is_file()]
+
+print("groups=%d" % groups)
+print("cand=%d" % cand)
+print("seen=%d" % len(seen_files))
+print("exempt_hit=%d" % exempt_hit)
+print("exempt_inert=%d" % exempt_inert)
+print("missing=%s" % (",".join(missing) if missing else "-"))
+print("bad=%d" % len(bad))
+for d in bad:
+    print("BAD %s" % d)
+PY
+)
+k52() { printf '%s\n' "$PY52" | sed -n "s/^$1=//p"; }
+# 前置（按 [51](0) 的同一条纪律）：先证明这个扫描器真的跑起来、扫到了东西，
+# 否则"没命中"与"通过"长得一模一样。这几条不钉**具体文件**，是因为发布包 /
+# 运行副本是**部分布局**（没有 docs/ 与 README），钉死文件名会在那儿假红。
+CAND52="$(k52 cand)"; [ -n "$CAND52" ] || CAND52=0
+eq "(0) 前置：扫描器打全了键（少一个 = 它半路死了）" \
+   "$(printf '%s\n' "$PY52" | grep -cE '^(groups|cand|seen|exempt_hit|exempt_inert|missing|bad)=')" "7"
+# 地板按**实测**定，不按想象定：完整包布局 cand=23 / seen=12；
+# 安装副本是**部分布局**（只有 SKILL/CONTRIBUTING/CHANGELOG/assets/references/
+# scripts，没有 README 与 docs/），cand=6 / seen=5。所以地板取 4 / 3 ——
+# 它挡的是"扫空了/扫塌了"这种退化，不是"覆盖够不够全"（那是 (a) 的活）。
+eq "(0) 前置：候选行数 ≥ 4（空集不许当通过）" \
+   "$([ "$CAND52" -ge 4 ] && echo yes || echo no)" "yes"
+eq "(0) 前置：候选落在 ≥ 3 个文件里（扫描面没塌成一个文件）" \
+   "$([ "$(k52 seen)" -ge 3 ] && echo yes || echo no)" "yes"
+eq "(0) 前置：豁免清单没有空转（文件在就必须真命中过）" "$(k52 exempt_inert)" "0"
+eq "(a) ★ 全树派生数字与真源一致（${ASSERT_TOTAL} 条 / $(k52 groups) 组）" "$(k52 bad)" "0"
+if [ "$(k52 bad)" != "0" ]; then
+  printf '%s\n' "$PY52" | sed -n 's/^BAD /       ↳ /p'
+fi
+if [ "$(k52 missing)" != "-" ]; then
+  echo "       （部分布局：这次没扫到 $(k52 missing)——不是错，但完整包里它们必须参与对账）"
+fi
+
+# ---- 元检查：ASSERT_TOTAL 是不是"实际断言数" --------------------------------
+# 这条**故意是最后一条断言**：`$((PASS+1))` 就是"算上它自己之后"的断言总数，
+# 所以它自洽、不循环。谁加了断言却忘了改文件头部的 ASSERT_TOTAL，这里当场红，
+# 而且直接把该填的数字告诉他 —— 轮到 [52](a) 再告诉他要刷哪些文件。
+if [ "$((PASS+1))" = "$ASSERT_TOTAL" ]; then
+  ok "(b) 元检查：ASSERT_TOTAL=${ASSERT_TOTAL} 与实际断言总数一致"
+else
+  ng "(b) 元检查：文件头部的 ASSERT_TOTAL=${ASSERT_TOTAL} 已过期 —— 实际会跑到 $((PASS+1)) 条。把它改成 $((PASS+1))，再跑一遍看 [52](a) 列出哪些文件的数字要跟着刷"
+fi
 
 # ---- 汇总 -----------------------------------------------------------------
 echo

@@ -9,7 +9,7 @@
 git clone https://github.com/YangLiHaoLiuYing/work-log.git
 cd work-log
 bash examples/demo.sh        # 60 秒看懂它在干嘛（不需要 key，不留文件）
-bash scripts/selftest.sh     # 698 条断言，空载约 3 分钟（同时跑多份会明显变慢，实测被拖到 8 分钟以上）
+bash scripts/selftest.sh     # 734 条断言，空载约 3 分钟（同时跑多份会明显变慢，实测被拖到 8 分钟以上）
 ```
 
 实测一遍 demo，再读 [`docs/DESIGN.md`](docs/DESIGN.md) 里那几个「刻意不做」的决定，

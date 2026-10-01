@@ -187,7 +187,7 @@ push 之后自动生效，不需要额外操作：
 |---|---|
 | `bash -n scripts/selftest.sh examples/demo.sh` | shell 语法检查 |
 | `python scripts/check_stdlib_only.py` | **挡住"不小心引入第三方依赖"** —— 这是本项目卖点，必须靠 CI 守 |
-| `bash scripts/selftest.sh` | 698 条断言 |
+| `bash scripts/selftest.sh` | 734 条断言 |
 | `bash examples/demo.sh > /dev/null` | 端到端可用性（顺带验证演示脚本没坏） |
 
 矩阵：`ubuntu-latest` + `macos-latest` × Python `3.9` + `3.13`，共 4 个组合。

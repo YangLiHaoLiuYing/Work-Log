@@ -129,7 +129,7 @@ python3 "$WL" --dir "$D" await --agent a1 --id 1 --timeout 90
 ```
 ~/.workbuddy/skills/work-log/
 ├── SKILL.md              本文件（判据层：触发条件 + 上手 + 判据）
-├── scripts/   work_log.py 引擎（零依赖，28 个子命令） · selftest.sh 自测（61 组 698 条；动过引擎先跑它）
+├── scripts/   work_log.py 引擎（零依赖，28 个子命令） · selftest.sh 自测（63 组 734 条；动过引擎先跑它）
 │              check_stdlib_only.py 依赖检查 · llm_agent.py 真模型驱动一个守协议的 agent
 │              waker.sh 外部唤醒器 · ask_listener.sh 驱动层参考实现（opencode 版）
 ├── references/  usage.md 使用详解（每个设计为什么） · protocol.md 协议/状态机/退出码 · cli.md 全部子命令

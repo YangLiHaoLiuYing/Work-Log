@@ -625,7 +625,7 @@ bash ~/.workbuddy/skills/work-log/scripts/selftest.sh
 python3 ~/.workbuddy/skills/work-log/scripts/check_stdlib_only.py
 ```
 
-61 组 698 条断言，只在临时目录里折腾，不碰项目文件。覆盖并发写不丢行、告警冷却与升级、
+63 组 734 条断言，只在临时目录里折腾，不碰项目文件。覆盖并发写不丢行、告警冷却与升级、
 **告警退避（连报 3 次后指数退避 / `cooldown=0` 也不许刷屏 / 恢复后计数与措辞都归零）**、
 恢复自动闭环、待启动保护、探针 brief 增量语义、**定向问答 ask/reply/await/ack-user**、
 **await 超时不得误报成功**、**协作险情（不可达等待 / 互相等待死锁 / 通信过热）**、
@@ -649,7 +649,7 @@ python3 ~/.workbuddy/skills/work-log/scripts/check_stdlib_only.py
 ~/.workbuddy/skills/work-log/
 ├── SKILL.md              本文件（只留触发条件与判据）
 ├── scripts/work_log.py  引擎（零依赖，28 个子命令）
-├── scripts/selftest.sh   自测（61 组 698 条断言，只测 CLI 本身）
+├── scripts/selftest.sh   自测（63 组 734 条断言，只测 CLI 本身）
 ├── scripts/check_stdlib_only.py  依赖检查：挡住「不小心引入第三方依赖」（秒级）
 ├── scripts/llm_agent.py  用真实模型驱动一个守协议的 agent
 ├── scripts/waker.sh   唤醒器（唤醒型通路：只叫醒宿主，不替人回话、不替别人回执）

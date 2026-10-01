@@ -97,7 +97,7 @@ A 问 B 一个问题，B 也问了 A 一个问题，然后**两边都在等对�
 
 **验证过的部分（不是"写完就发"）：**
 
-- 698 条回归断言 / 61 个测试组，Python 3.9.6 和 3.13.12 上各自全绿
+- 734 条回归断言 / 63 个测试组，Python 3.9.6 和 3.13.12 上各自全绿
 - 用真实模型驱动两个 agent 走完整协议 3 轮：双向问答全部闭环、决定里能引用对方原话、面对与已定结论冲突的用户要求走"阻塞 + 协商 + 显式折中"、看门狗全程 0 误报
 
 **我也知道它测不出什么**（写在 README 里了）：
@@ -163,7 +163,7 @@ bash examples/demo.sh
 ② 等待图抓「心跳全绿的死锁」——A 等 B、B 等 A，两个心跳都是绿的，但团队已经死了。这类故障任何超时/崩溃监控都抓不到，因为没有东西超时
 ③ 熔断抓「互相客套烧预算」——两个 agent「好的」「收到」来回十几轮
 
-纯标准库零依赖，Python 3.9+ / 3.13 各 698 条断言全绿。
+纯标准库零依赖，Python 3.9+ / 3.13 各 734 条断言全绿。
 不需要 API key，一个 bash 脚本就能看到效果 👇
 github.com/YangLiHaoLiuYing/work-log
 ```
@@ -266,7 +266,7 @@ Design choices worth mentioning:
   model round-trip is 30–60s. Not worth three incompatible OS APIs, especially
   with a Windows fallback.
 
-Verified: 698 assertions / 61 groups, green on Python 3.9 and 3.13, plus 3 rounds
+Verified: 734 assertions / 63 groups, green on Python 3.9 and 3.13, plus 3 rounds
 of real-model validation driving two agents through the full protocol (all
 exchanges closed, decisions quoted the peer's actual wording, 0 watchdog false
 positives).

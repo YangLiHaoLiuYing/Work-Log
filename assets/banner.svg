@@ -48,7 +48,7 @@
       <text x="275" y="292" fill="#7dd3fc" text-anchor="middle">纯标准库 · 3.9+</text>
 
       <rect x="360" y="272" width="150" height="30" rx="15" fill="#3b2f63" fill-opacity="0.6" stroke="#a78bfa" stroke-opacity="0.45"/>
-      <text x="435" y="292" fill="#c4b5fd" text-anchor="middle">58 组 656 条断言</text>
+      <text x="435" y="292" fill="#c4b5fd" text-anchor="middle">63 组 734 条断言</text>
     </g>
 
     <text x="66" y="348" font-size="14" fill="#475569">
